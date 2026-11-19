@@ -1,0 +1,23 @@
+# Kovexy as root, needed for the Incus module (phase 3). Prefer kovexy.service when Incus is not used.
+[Unit]
+Description=Kovexy reverse proxy (root)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+StateDirectory=kovexy
+WorkingDirectory=/var/lib/kovexy
+ExecStart=/usr/bin/java -Xmx512m -XX:+ExitOnOutOfMemoryError --enable-native-access=ALL-UNNAMED -jar /opt/kovexy/kovexy.jar dataDir=/var/lib/kovexy
+Restart=on-failure
+# 78 is a rejected config or a port that cannot be bound, a restart does not fix either
+RestartPreventExitStatus=78
+SuccessExitStatus=143
+UMask=0077
+LimitCORE=0
+LimitNOFILE=1048576
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

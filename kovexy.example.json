@@ -1,0 +1,284 @@
+{
+  "admin": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "publicUrl": "https://proxy.example.com",
+    "loginMode": "password",
+    "session": {
+      "idleTimeout": "60m",
+      "maxAge": "12h"
+    },
+    "oidc": {
+      "issuer": "https://id.example.com",
+      "clientId": "kovexy",
+      "clientSecret": "replace-with-the-client-secret",
+      "allowedSubjects": [],
+      "forceReauth": true,
+      "scopes": [
+        "openid",
+        "profile"
+      ]
+    }
+  },
+  "acme": {
+    "directory": "https://acme-v02.api.letsencrypt.org/directory",
+    "staging": false,
+    "email": "admin@example.com"
+  },
+  "trustedProxies": [],
+  "defaultSite": {
+    "type": "static",
+    "root": "",
+    "directoryListing": false
+  },
+  "accessProfiles": [
+    {
+      "name": "home-only",
+      "allowIps": [
+        "192.168.1.0/24"
+      ],
+      "allowLocal": true
+    },
+    {
+      "name": "public",
+      "denyCountries": [
+        "KP"
+      ],
+      "exploitFilter": {
+        "commonExploits": true,
+        "aiBots": true,
+        "response": "forbidden"
+      },
+      "trapPaths": {
+        "enabled": true,
+        "banDuration": "1h"
+      },
+      "rateLimit": {
+        "requestsPerSecond": 20,
+        "ipv6Prefix": 64
+      },
+      "allowedMethods": [
+        "GET",
+        "HEAD",
+        "POST"
+      ]
+    },
+    {
+      "name": "family",
+      "basicAuth": {
+        "users": [
+          {
+            "name": "ada",
+            "hash": "$2b$14$ZDuqPnMXItWrcdvQ5BOv7uFIOa1GgeVJ.Lj5V4KNw3kwHX5M1hHk2"
+          }
+        ],
+        "realm": "Family",
+        "exceptions": [
+          {
+            "pathPrefix": "/public"
+          },
+          {
+            "cidr": "192.168.1.0/24"
+          }
+        ]
+      }
+    }
+  ],
+  "upstreams": [
+    {
+      "name": "app",
+      "servers": [
+        {
+          "address": "127.0.0.1:8080",
+          "weight": 1
+        },
+        {
+          "address": "127.0.0.1:8081",
+          "weight": 0
+        }
+      ],
+      "stickySession": false,
+      "healthCheck": {
+        "path": "/health",
+        "interval": "30s",
+        "timeout": "5s",
+        "expectStatus": 200
+      }
+    },
+    {
+      "name": "kovexy-admin",
+      "servers": [
+        {
+          "address": "127.0.0.1:8000"
+        }
+      ]
+    },
+    {
+      "name": "nas",
+      "servers": [
+        {
+          "address": "192.168.1.20:5001",
+          "tls": true,
+          "skipCertVerify": true
+        }
+      ]
+    }
+  ],
+  "sites": [
+    {
+      "domains": [
+        "example.com",
+        "www.example.com"
+      ],
+      "listeners": [
+        "http",
+        "https"
+      ],
+      "httpsRedirect": true,
+      "locations": [
+        {
+          "path": "/",
+          "target": {
+            "type": "upstream",
+            "upstream": "app"
+          },
+          "responseHeaders": [
+            {
+              "action": "set",
+              "name": "Strict-Transport-Security",
+              "value": "max-age=31536000"
+            },
+            {
+              "action": "set",
+              "name": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "action": "set",
+              "name": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            }
+          ]
+        },
+        {
+          "path": "/api",
+          "stripPrefix": true,
+          "target": {
+            "type": "upstream",
+            "upstream": "app"
+          },
+          "requestHeaders": [
+            {
+              "action": "set",
+              "name": "X-Api",
+              "value": "1"
+            }
+          ]
+        },
+        {
+          "path": "/downloads",
+          "target": {
+            "type": "static",
+            "root": "/srv/downloads",
+            "directoryListing": true
+          }
+        },
+        {
+          "path": "/old",
+          "target": {
+            "type": "redirect",
+            "url": "https://example.com/new",
+            "status": 301,
+            "keepPath": true
+          }
+        },
+        {
+          "path": "/.git",
+          "target": {
+            "type": "deny",
+            "status": 404
+          }
+        },
+        {
+          "path": "/status",
+          "match": "exact",
+          "target": {
+            "type": "deny",
+            "status": 403,
+            "html": "<h1>Not here</h1>"
+          }
+        }
+      ],
+      "enabled": true,
+      "accessLog": true,
+      "access": "public"
+    },
+    {
+      "domains": [
+        "proxy.example.com"
+      ],
+      "locations": [
+        {
+          "path": "/",
+          "target": {
+            "type": "upstream",
+            "upstream": "kovexy-admin"
+          }
+        }
+      ],
+      "access": "home-only"
+    },
+    {
+      "domains": [
+        "nas.example.com"
+      ],
+      "locations": [
+        {
+          "path": "/",
+          "target": {
+            "type": "upstream",
+            "upstream": "nas"
+          }
+        }
+      ],
+      "access": "family"
+    }
+  ],
+  "webhooks": [
+    {
+      "name": "KNot",
+      "url": "https://knot.example.com/hook",
+      "headers": {
+        "X-API-Key": "replace-with-your-knot-key"
+      },
+      "template": "{\"subject\": \"{{subject}}\", \"body\": \"{{body}}\"}",
+      "events": [
+        "certIssued",
+        "certFailed",
+        "upstreamDown",
+        "upstreamUp",
+        "ipBanned",
+        "adminLoginFailed",
+        "configChanged",
+        "configInvalid"
+      ],
+      "bundleWindow": "60s"
+    }
+  ],
+  "limits": {
+    "upstreamConnectTimeout": "3s",
+    "upstreamKeepAlive": "2m",
+    "clientIdleTimeout": "5m",
+    "maxRequestHeaderBytes": 16384,
+    "maxConnections": 10000,
+    "maxAcceptsPerSecond": 0
+  },
+  "retention": {
+    "accessLog": "90d",
+    "hourlyStats": "90d",
+    "audit": "90d",
+    "securityEvents": "90d"
+  },
+  "updateCheck": true,
+  "webSocketCloseDelay": "0s"
+}

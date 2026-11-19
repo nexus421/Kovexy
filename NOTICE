@@ -1,0 +1,22 @@
+Kovexy
+Copyright 2026 Marvin Kickner
+
+This product is licensed under the Apache License 2.0 (see LICENSE). It includes or is based on:
+
+- Exploit filter patterns (src/main/kotlin/bayern/kickner/kovexy/access/Patterns.kt), taken from
+  Nginx Proxy Manager, docker/rootfs/etc/nginx/conf.d/include/block-exploits.conf
+  https://github.com/NginxProxyManager/nginx-proxy-manager
+  Copyright (c) 2017. MIT License, see licenses/nginx-proxy-manager-LICENSE.
+
+- List of AI crawlers (src/main/resources/ai-bots/robots.json)
+  https://github.com/ai-robots-txt/ai.robots.txt
+  Copyright (c) 2024 ai.robots.txt. MIT License, see src/main/resources/ai-bots/LICENSE.
+
+- htmx and its SSE extension (src/main/resources/static/vendor/htmx)
+  https://htmx.org, Zero-Clause BSD, see the LICENSE files in that directory.
+
+- OpenID Connect client and parts of the admin UI, taken from Dirl
+  https://github.com/nexus421/Dirl
+
+At runtime Kovexy can download country data from https://github.com/sapics/ip-location-db
+(user-country, Public Domain Dedication and License v1.0). It is not part of this distribution.

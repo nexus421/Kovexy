@@ -1,0 +1,2 @@
+robots.json from https://github.com/ai-robots-txt/ai.robots.txt (main, commit be22abebcf663f7080766ad814829396dd19c659), fetched on 18.11.2026.
+License MIT, see LICENSE in this directory. Only the keys (user agent names) are used.

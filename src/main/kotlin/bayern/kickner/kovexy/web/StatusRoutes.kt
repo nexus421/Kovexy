@@ -1,0 +1,179 @@
+package bayern.kickner.kovexy.web
+
+import bayern.kickner.kovexy.Kovexy
+import bayern.kickner.kovexy.formatTimestamp
+import bayern.kickner.kovexy.stats.AccessLogTable
+import bayern.kickner.kovexy.stats.DEFAULT_SITE_KEY
+import bayern.kickner.kovexy.stats.statistics
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+import io.ktor.server.sse.sse
+import io.ktor.sse.ServerSentEvent
+import kotlinx.coroutines.delay
+import kotlinx.html.FlowContent
+import kotlinx.html.a
+import kotlinx.html.div
+import kotlinx.html.p
+import kotlinx.html.span
+import kotlinx.html.stream.createHTML
+import kotlinx.html.table
+import kotlinx.html.tbody
+import kotlinx.html.td
+import kotlinx.html.th
+import kotlinx.html.thead
+import kotlinx.html.tr
+import org.jetbrains.exposed.v1.core.SortOrder
+import org.jetbrains.exposed.v1.core.greaterEq
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.seconds
+
+/** Interval of the live updates of the status page. */
+private val LIVE_INTERVAL = 5.seconds
+
+/** Certificates that expire within this time are shown as warning. */
+private val EXPIRY_WARNING = 14.days
+
+/** The status page with live updates over SSE. */
+fun Route.statusRoutes(kovexy: Kovexy) {
+    get("/") {
+        call.page("Status", call.session, Nav.STATUS, htmx = true) {
+            pageHeader("Status", "Overview of sites, upstreams and certificates. Updates every ${LIVE_INTERVAL.inWholeSeconds} seconds.")
+            div {
+                attributes["hx-ext"] = "sse"
+                attributes["sse-connect"] = "/status/events"
+                attributes["sse-swap"] = "status"
+                attributes["hx-swap"] = "innerHTML"
+                statusContent(kovexy)
+            }
+        }
+    }
+
+    sse("/status/events") {
+        val token = call.attributes[SessionTokenKey]
+        // Logout, expiry or "end all other sessions" also end an open stream
+        while (true) {
+            delay(LIVE_INTERVAL)
+            if (kovexy.sessions.get(token, touch = false) == null) break
+            val html = createHTML(prettyPrint = false).div { statusContent(kovexy) }
+            send(ServerSentEvent(data = html, event = "status"))
+        }
+    }
+}
+
+/** Everything the status page shows, rendered for the page and for every live update. */
+private fun FlowContent.statusContent(kovexy: Kovexy) {
+    val config = kovexy.config
+    val now = kovexy.clock()
+    val today = kovexy.accessLog.dayStart(now)
+    val todayRows = kovexy.storage.statistics(hourly = false, from = today)
+    val requestsToday = todayRows.sumOf { it.requests }
+    val errorsToday = todayRows.sumOf { it.status5xx }
+    val servers = kovexy.upstreams.all().flatMap { it.servers }
+    val certs = kovexy.certificates.status().filter { it.wanted }
+    val certProblems = certs.count { it.lastError != null || it.notAfter == null || it.notAfter - now < EXPIRY_WARNING.inWholeMilliseconds }
+
+    div("stats-grid") {
+        stat("${config.sites.count { it.enabled }} / ${config.sites.size}", "Sites enabled")
+        stat("${servers.count { it.healthy }} / ${servers.size}", "Upstream servers up")
+        stat("${certs.size - certProblems} / ${certs.size}", "Certificates fine")
+        stat(requestsToday.toString(), "Requests today")
+        stat(errorsToday.toString(), "5xx answers today")
+        stat(kovexy.webSockets.count.toString(), "Open WebSockets")
+    }
+
+    div("columns gap-top") {
+        card("Upstreams") {
+            val groups = kovexy.upstreams.all()
+            if (groups.isEmpty()) p("muted") { +"No upstream groups yet." }
+            else div("table-wrap") {
+                table("stack-mobile") {
+                    thead { tr { th { +"Server" }; th { +"Group" }; th { +"State" }; th(classes = "num") { +"Active" } } }
+                    tbody {
+                        groups.forEach { group ->
+                            group.servers.forEach { server ->
+                                tr {
+                                    td { attributes["data-label"] = "Server"; +server.address.toString() }
+                                    td { attributes["data-label"] = "Group"; a(href = "/upstreams/${urlPart(group.config.name)}") { +group.config.name } }
+                                    td {
+                                        attributes["data-label"] = "State"
+                                        if (server.healthy) pill("ok", "up") else pill("error", "down")
+                                        server.lastError?.let { span("muted small") { +" $it" } }
+                                    }
+                                    td("num") { attributes["data-label"] = "Active"; +server.active.get().toString() }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        card("Certificates") {
+            if (certs.isEmpty()) p("muted") { +"No site on the TLS listener yet." }
+            else div("table-wrap") {
+                table("stack-mobile") {
+                    thead { tr { th { +"Domain" }; th { +"State" }; th { +"Valid until" } } }
+                    tbody {
+                        certs.forEach { cert ->
+                            tr {
+                                td { attributes["data-label"] = "Domain"; +cert.domain }
+                                td {
+                                    attributes["data-label"] = "State"
+                                    certificatePill(cert, now)
+                                }
+                                td("nowrap") { attributes["data-label"] = "Valid until"; +(cert.notAfter?.let(::formatTimestamp) ?: "-") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    card("Latest errors", "gap-top") {
+        val latest = kovexy.storage.tx {
+            AccessLogTable.selectAll().where { AccessLogTable.status greaterEq 500 }
+                .orderBy(AccessLogTable.id, SortOrder.DESC).limit(8)
+                .map { Triple(it[AccessLogTable.time], "${it[AccessLogTable.status]} ${it[AccessLogTable.method]} ${it[AccessLogTable.domain]}${it[AccessLogTable.path]}", it[AccessLogTable.reason]) }
+        }
+        if (latest.isEmpty()) p("muted") { +"No 5xx answers in the access log." }
+        else div("table-wrap") {
+            table("stack-mobile") {
+                thead { tr { th { +"Time" }; th { +"Request" }; th { +"Reason" } } }
+                tbody {
+                    latest.forEach { (time, request, reason) ->
+                        tr {
+                            td("nowrap") { attributes["data-label"] = "Time"; +formatTimestamp(time) }
+                            td { attributes["data-label"] = "Request"; span("break") { +request } }
+                            td { attributes["data-label"] = "Reason"; +reason }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    p("muted small") {
+        +"Running since ${formatTimestamp(kovexy.startedAt)}."
+        val dropped = kovexy.accessLog.dropped.get()
+        if (dropped > 0) +" $dropped access log records were dropped because the database could not keep up."
+    }
+}
+
+/** The state of a certificate as pill. */
+fun FlowContent.certificatePill(cert: bayern.kickner.kovexy.tls.CertificateStatus, now: Long) {
+    when {
+        cert.gaveUp -> pill("error", "gave up")
+        cert.lastError != null && cert.notAfter == null -> pill("error", "failing")
+        cert.lastError != null -> pill("warn", "renewal failing")
+        cert.notAfter == null -> pill("warn", "pending")
+        cert.notAfter < now -> pill("error", "expired")
+        cert.notAfter - now < EXPIRY_WARNING.inWholeMilliseconds -> pill("warn", "expires soon")
+        else -> pill("ok", "valid")
+    }
+}
+
+/** Display name of a statistics site key. */
+fun siteLabel(key: String): String = if (key == DEFAULT_SITE_KEY) "Default site" else key
+
+/** Encodes a name for a URL path segment. */
+fun urlPart(name: String): String = java.net.URLEncoder.encode(name, Charsets.UTF_8).replace("+", "%20")

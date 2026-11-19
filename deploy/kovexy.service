@@ -1,0 +1,32 @@
+# Kovexy without root: systemd creates a temporary user on every start (DynamicUser) and makes the file system read
+# only. Kovexy may only write to /var/lib/kovexy (StateDirectory), which holds kovexy.json, the database, the
+# certificates and the logs. Ports 80 and 443 work through CAP_NET_BIND_SERVICE.
+# The Incus module (phase 3) needs root, use kovexy-root.service for it.
+[Unit]
+Description=Kovexy reverse proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+DynamicUser=yes
+StateDirectory=kovexy
+WorkingDirectory=/var/lib/kovexy
+ExecStart=/usr/bin/java -Xmx512m -XX:+ExitOnOutOfMemoryError --enable-native-access=ALL-UNNAMED -jar /opt/kovexy/kovexy.jar dataDir=/var/lib/kovexy
+Restart=on-failure
+# 78 is a rejected config or a port that cannot be bound, a restart does not fix either
+RestartPreventExitStatus=78
+# 143 is the normal end after systemctl stop (SIGTERM)
+SuccessExitStatus=143
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+UMask=0077
+LimitCORE=0
+# Like Caddy's unit: the default limit of open files would cap the number of connections
+LimitNOFILE=1048576
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
