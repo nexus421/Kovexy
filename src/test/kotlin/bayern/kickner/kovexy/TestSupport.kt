@@ -29,10 +29,18 @@ import kotlin.time.Duration.Companion.seconds
 /** A free TCP port on loopback. */
 fun freePort(): Int = ServerSocket(0).use { it.localPort }
 
-/** Accepts every certificate, the tests inspect the certificate themselves. */
-object TrustAllManager : X509TrustManager {
+/**
+ * Accepts every certificate, the tests inspect the certificate themselves. An extended manager, because the JDK wraps a
+ * plain `X509TrustManager` and then still checks the host name for clients like `HttpClient` (acme4j), which fails for
+ * a certificate without a subject alternative name for `127.0.0.1`.
+ */
+object TrustAllManager : X509ExtendedTrustManager() {
     override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
     override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?, socket: Socket?) = Unit
+    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?, socket: Socket?) = Unit
+    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?, engine: SSLEngine?) = Unit
+    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?, engine: SSLEngine?) = Unit
     override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
 }
 
