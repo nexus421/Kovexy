@@ -111,13 +111,11 @@ fun encodePathSegment(segment: String): String = buildString {
  * address afterwards.
  *
  * @param token Signed page token with profile, domain and return address.
- * @param provider `pow`, `recaptcha2` or `recaptcha3`.
- * @param task Proof of work task, for `pow`.
- * @param difficulty Proof of work difficulty.
- * @param siteKey Google site key, for reCAPTCHA.
+ * @param provider `recaptcha2` (the checkbox) or `recaptcha3` (invisible).
+ * @param siteKey Google site key.
  * @param error Shown above the captcha after a failed attempt.
  */
-fun captchaPage(token: String, provider: String, task: String = "", difficulty: Int = 0, siteKey: String = "", error: String? = null): String =
+fun captchaPage(token: String, provider: String, siteKey: String, error: String? = null): String =
     "<!DOCTYPE html>\n" + createHTML().html {
         lang = "en"
         head {
@@ -140,29 +138,15 @@ fun captchaPage(token: String, provider: String, task: String = "", difficulty: 
                     // Attributes first, kotlinx.html writes the tag before its first child
                     id = "kovexy-captcha"
                     attributes["data-provider"] = provider
-                    if (provider == "pow") {
-                        attributes["data-task"] = task
-                        attributes["data-difficulty"] = difficulty.toString()
-                    }
                     if (provider == "recaptcha3") attributes["data-sitekey"] = siteKey
                     hiddenInput(name = "token") { value = token }
-                    when (provider) {
-                        "pow" -> {
-                            hiddenInput(name = "task") { value = task }
-                            hiddenInput(name = "nonce") { value = "" }
-                            p { id = "kovexy-status"; +"Your browser solves a small calculation, this takes a few seconds." }
-                        }
-
-                        "recaptcha2" -> {
-                            p { +"Please confirm that you are a human." }
-                            div("g-recaptcha") { attributes["data-sitekey"] = siteKey }
-                            button(type = ButtonType.submit) { +"Continue" }
-                        }
-
-                        else -> {
-                            hiddenInput(name = "g-recaptcha-response") { value = "" }
-                            p { id = "kovexy-status"; +"Checking your browser." }
-                        }
+                    if (provider == "recaptcha2") {
+                        p { +"Please confirm that you are a human." }
+                        div("g-recaptcha") { attributes["data-sitekey"] = siteKey }
+                        button(type = ButtonType.submit) { +"Continue" }
+                    } else {
+                        hiddenInput(name = "g-recaptcha-response") { value = "" }
+                        p { id = "kovexy-status"; +"Checking your browser." }
                     }
                     noScript { p { +"This page needs JavaScript." } }
                 }

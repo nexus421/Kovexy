@@ -29,8 +29,7 @@ Use the Gradle wrapper.
 ```
 
 `devRun` starts Kovexy with two demo upstreams: proxy on 18080 (plain) and 18443 (TLS), admin UI on
-`http://localhost:18000` with login through the mock OIDC provider on 18001 (pick a user), `pow.localhost` shows the
-proof of work captcha, data in `build/dev`. `.claude/launch.json` has it
+`http://localhost:18000` with login through the mock OIDC provider on 18001 (pick a user), data in `build/dev`. `.claude/launch.json` has it
 as `kovexy-dev`.
 
 ```bash
@@ -50,8 +49,7 @@ The fat JAR is `build/libs/kovexy.jar`. After changing dependencies or the Shado
 
 - Kotlin 2.4.21, Gradle 9.9.1, Shadow 9.6.1, Ktor 3.6.1 (Jetty 12.1.13), Exposed 1.6.1, acme4j 5.1.0. Toolchain
   Amazon Corretto 25, bytecode and API level 21 (`-Xjdk-release=21`) because the target runs Debian 13's OpenJDK 21.
-- `bayern.kickner` libraries from `https://maven.kickner.bayern/releases`: Klogger 0.5.0 (with SLF4J provider),
-  KotNexLib 4.4.1.
+- `bayern.kickner` library from `https://maven.kickner.bayern/releases`: Klogger 0.5.0 (with SLF4J provider).
 - BouncyCastle is pinned to 1.87 through its BOM.
 - `BuildConfig` (`VERSION`, `BUILD_TIME`) is generated into `build/` on every build, never commit it.
 - `src/main/resources/ai-bots/robots.json` comes from ai.robots.txt with `ORIGIN.txt` and `SHA256SUMS`, update it
@@ -87,14 +85,15 @@ Invariants, keep them when adding code:
 - No Jetty bean is added while the server runs, connectors that already run do not pick it up. Limits live in
   `ConnectionGate`, created before the start, only its values change.
 - `/.kovexy/` on proxied domains belongs to Kovexy (`proxy/ReservedPaths.kt`) and never reaches an upstream. Kovexy's
-  own cookies and the `X-Forwarded-User` family from visitors are removed before forwarding.
+  own captcha cookie and the `X-Forwarded-User` family from visitors are removed before forwarding. Kovexy has no
+  login in front of apps, apps protect themselves.
 - Header handling follows Caddy: `Host` unchanged, `X-Forwarded-*` replaced unless the peer is a trusted proxy,
   hop-by-hop headers removed.
 
 ## Code style
 
 Same conventions as [DemoAiProject](https://github.com/nexus421/DemoAiProject) and Dirl: `.not()` instead of `!`,
-small `if`s without braces, `runCatching` by default, expected outcomes as `ResultOf2` and sealed types instead of
+small `if`s without braces, `runCatching` by default, expected outcomes as `ResultOf2` (own type in `ResultOf2.kt`) and sealed types instead of
 exceptions, injectable `clock`, `staticLog` with `private const val TAG`, timestamps through `timestampFormat` in
 `Common.kt`, KDoc on every public declaration. No em dashes, no en dashes and no semicolons in prose (README, KDoc,
 comments, UI strings). Code, KDoc, comments and README are English, the concept stays German.

@@ -12,7 +12,7 @@ import bayern.kickner.kovexy.config.writeAtomically
 import bayern.kickner.kovexy.ensurePrivateDir
 import bayern.kickner.kovexy.setPermissions
 import bayern.kickner.kovexy.stats.DATABASE_FILE_NAME
-import kotnexlib.ResultOf2
+import bayern.kickner.kovexy.ResultOf2
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
@@ -82,7 +82,7 @@ private fun ZipOutputStream.add(name: String, file: File) {
  * Restores a backup while running. The ZIP is checked completely first: only known entries, a valid config, size
  * limits. Then the current state is saved as restore point in `<dataDir>/backups`, the certificates and the
  * database (if contained) are replaced and the config is applied like any other change. The fallback certificate is
- * kept, it is generated per installation. A restored database ends every admin and app login, the restoring admin
+ * kept, it is generated per installation. A restored database ends every admin login, the restoring admin
  * logs in again.
  *
  * @param zip The uploaded backup on disk.
@@ -108,9 +108,8 @@ suspend fun Kovexy.restoreBackup(zip: File): String? {
             storage.restoreFrom(database)
             bans.reload()
             // Sessions in the backup may have been ended since (logout, password change, removed subject). Restoring
-            // them would let them back in, so a restore ends every admin and app login, the own one too (audit run-2)
+            // them would let them back in, so a restore ends every admin login, the own one too (audit run-2)
             sessions.removeAll()
-            appAuth.removeAll()
         }
         certificates.loadStored()
         return when (val result = configStore.update(null) { config }) {

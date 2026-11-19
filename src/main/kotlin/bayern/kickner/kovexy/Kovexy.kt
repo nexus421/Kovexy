@@ -43,8 +43,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
 import bayern.kickner.kovexy.access.AccessChecker
-import bayern.kickner.kovexy.access.AppAuthService
 import bayern.kickner.kovexy.access.CaptchaService
+import bayern.kickner.kovexy.access.GOOGLE_SITEVERIFY
+import bayern.kickner.kovexy.access.GoogleVerifier
 import bayern.kickner.kovexy.proxy.ReservedPaths
 import bayern.kickner.kovexy.incus.IncusDecisions
 import bayern.kickner.kovexy.incus.IncusDiscovery
@@ -93,8 +94,7 @@ const val PASSWORD_ONLY_WARNING = "The admin UI is protected by a password only.
  * @property security Security events.
  * @property audit Audit log.
  * @property access Runs access profiles.
- * @property captcha Captcha sessions and proof of work.
- * @property appAuth OIDC login in front of sites.
+ * @property captcha Solved captchas and the Google check.
  * @property incusDecisions Approvals and rejections of Incus containers.
  * @property scope Background work, cancelled on [stop].
  * @property clock Unix milliseconds.
@@ -122,7 +122,6 @@ class Kovexy internal constructor(
     val audit: AuditLog,
     val access: AccessChecker,
     val captcha: CaptchaService,
-    val appAuth: AppAuthService,
     val incusDecisions: IncusDecisions,
     val scope: CoroutineScope,
     val clock: () -> Long,
@@ -178,7 +177,7 @@ class Kovexy internal constructor(
         httpsPort = { server.httpsPort },
         bans = bans,
         access = access,
-        reserved = ReservedPaths(captcha, appAuth, security),
+        reserved = ReservedPaths(captcha, security),
         geo = geo,
         adminPort = { server.adminPort },
         clock = clock,
@@ -203,7 +202,6 @@ class Kovexy internal constructor(
 
     init {
         upstreams.reconcile(config.upstreams)
-        appAuth.configure(config.appAuth)
         configStore.onChange { old, new, source, actor -> apply(old, new, source, actor) }
         configStore.onInvalid { problems ->
             webhooks.emit(Event(WebhookEvent.CONFIG_INVALID, "Configuration file rejected", problems.joinToString("\n"), time = clock()))
@@ -276,7 +274,6 @@ class Kovexy internal constructor(
         webSockets.closeAll(scope, new.webSocketCloseDelay)
         // A new client also means a new cookie key, login attempts in flight from the old settings end
         if (old?.admin?.oidc != new.admin.oidc || old?.admin?.publicUrl != new.admin.publicUrl || old?.admin?.loginMode != new.admin.loginMode) oidc = createOidc(new)
-        if (old?.appAuth != new.appAuth) appAuth.configure(new.appAuth)
         val how = if (source == ChangeSource.FILE) "The file was changed on disk." else "Saved by ${actor.name}."
         staticLog(KLogger.Level.INFO, TAG) { "Configuration applied. $how" }
         if (old != null) {
@@ -309,6 +306,7 @@ class Kovexy internal constructor(
  * @param ports Proxy ports, only tests and `devRun` change them.
  * @param issuer Orders certificates, the default uses ACME, tests pass a fake.
  * @param latestRelease Asks GitHub for the newest release, the default never asks, so tests do not reach GitHub.
+ * @param googleSiteverify Google's reCAPTCHA verification endpoint, tests pass a fake.
  * @param clock Unix milliseconds for every part.
  */
 fun createKovexy(
@@ -316,6 +314,7 @@ fun createKovexy(
     ports: Ports = Ports(),
     issuer: ((CertStore, ChallengeStore, () -> String) -> CertificateIssuer)? = null,
     latestRelease: () -> String? = { null },
+    googleSiteverify: String = GOOGLE_SITEVERIFY,
     clock: () -> Long = System::currentTimeMillis,
 ): Kovexy {
     val dataDir = configStore.dataDir
@@ -333,8 +332,7 @@ fun createKovexy(
     }
     // Always loaded, the statistics show countries too (decided on 18.11.2026)
     val geo = Geo(File(dataDir, "geo"), clock = clock)
-    val captcha = CaptchaService(clock = clock)
-    val appAuth = AppAuthService(storage, clock, scope)
+    val captcha = CaptchaService(GoogleVerifier(googleSiteverify), clock)
     val webSockets = WebSocketRegistry()
     // A banned address also loses the WebSockets it already has
     val bans = BanStore(storage, webhooks, security, clock) { key -> webSockets.closeWhere(scope, "after a ban") { it.clientKey == key } }
@@ -370,9 +368,8 @@ fun createKovexy(
         bans = bans,
         security = security,
         audit = audit,
-        access = AccessChecker(geo, bans, security, RateLimiter(clock), BasicAuthChecker(clock), captcha, appAuth) { config().aiCrawlers },
+        access = AccessChecker(geo, bans, security, RateLimiter(clock), BasicAuthChecker(clock), captcha) { config().aiCrawlers },
         captcha = captcha,
-        appAuth = appAuth,
         incusDecisions = IncusDecisions(storage, clock),
         scope = scope,
         clock = clock,

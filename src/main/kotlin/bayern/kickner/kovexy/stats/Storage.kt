@@ -106,19 +106,6 @@ object SecurityEventTable : Table("security_events") {
     override val primaryKey = PrimaryKey(id)
 }
 
-/** Sessions of the OIDC login before apps, per domain. Only the SHA-256 of the token is stored. */
-object AppSessionTable : Table("app_sessions") {
-    val tokenHash = varchar("token_hash", 64)
-    val domain = varchar("domain", 253)
-    val sub = varchar("sub", 256)
-    val name = varchar("name", 100)
-    val email = varchar("email", 200)
-    val preferredUsername = varchar("preferred_username", 100)
-    val createdAt = long("created_at")
-    val lastSeen = long("last_seen")
-    override val primaryKey = PrimaryKey(tokenHash)
-}
-
 /** Decisions about discovered Incus containers: approved or rejected, for exactly these domains. */
 object IncusDecisionTable : Table("incus_decisions") {
     val project = varchar("project", 100)
@@ -152,7 +139,7 @@ object LatencyTable : Table("stats_latency") {
 /** Every table, created on start. */
 private val ALL_TABLES = arrayOf(
     AccessLogTable, StatsHourlyTable, StatsDailyTable, SessionTable, BanTable, AuditTable, SecurityEventTable,
-    AppSessionTable, IncusDecisionTable, StatsTopTable, LatencyTable,
+    IncusDecisionTable, StatsTopTable, LatencyTable,
 )
 
 /**
@@ -191,6 +178,13 @@ class Storage(val file: File) {
         rawSql("PRAGMA journal_mode = WAL")
         transaction(db) { SchemaUtils.create(*ALL_TABLES) }
         addMissingColumns()
+        dropRemovedTables()
+    }
+
+    /** Tables of features Kovexy no longer has, so a database from an older version leaves no stale data behind. */
+    private fun dropRemovedTables() {
+        // The login before apps (removed on 19.11.2026) kept its sessions here
+        rawSql("DROP TABLE IF EXISTS app_sessions")
     }
 
     /**

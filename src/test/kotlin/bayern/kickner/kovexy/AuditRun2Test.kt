@@ -2,10 +2,8 @@ package bayern.kickner.kovexy
 
 import bayern.kickner.kovexy.access.BasicAuthChecker
 import bayern.kickner.kovexy.access.CaptchaSessions
-import bayern.kickner.kovexy.access.ProofOfWork
 import bayern.kickner.kovexy.access.Signer
 import bayern.kickner.kovexy.access.isForeignInitiated
-import bayern.kickner.kovexy.access.leadingZeroBits
 import bayern.kickner.kovexy.access.matchCommonExploit
 import bayern.kickner.kovexy.auth.LoginThrottle
 import bayern.kickner.kovexy.auth.hashBcrypt
@@ -24,7 +22,6 @@ import bayern.kickner.kovexy.proxy.HeaderList
 import bayern.kickner.kovexy.proxy.setForwarded
 import bayern.kickner.kovexy.proxy.certificateMatchesHost
 import bayern.kickner.kovexy.proxy.isKovexyBasicCredential
-import kotnexlib.ResultOf2
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -143,21 +140,6 @@ class AuditRun2Test {
     }
 
     @Test
-    fun usedProofOfWorkTasksAreBounded() {
-        val pow = ProofOfWork(Signer(), max = 2) { 0L }
-        fun solve(task: String): String {
-            var n = 0
-            while (leadingZeroBits(MessageDigest.getInstance("SHA-256").digest("$task:$n".toByteArray())) < 8) n++
-            return n.toString()
-        }
-        val tasks = (1..3).map { pow.task(8) }
-        assertTrue(pow.verify(tasks[0], solve(tasks[0]), 8))
-        assertFalse(pow.verify(tasks[0], solve(tasks[0]), 8), "Used once")
-        assertTrue(pow.verify(tasks[1], solve(tasks[1]), 8))
-        assertFalse(pow.verify(tasks[2], solve(tasks[2]), 8), "A full list refuses instead of forgetting a used task")
-    }
-
-    @Test
     fun fileInjectionPatternsDoNotOverflowTheStack() {
         assertEquals("file injection", matchCommonExploit("a=" + "/a".repeat(8000), ""))
         assertEquals("file injection", matchCommonExploit("a=" + "../".repeat(5000), ""))
@@ -180,7 +162,7 @@ class AuditRun2Test {
 
     @Test
     fun captchaExceptionNeedsAPathAndSessionsAnEnd() {
-        fun profile(captcha: String) = """{ "accessProfiles": [ { "name": "p", "captcha": { "provider": "pow", $captcha } } ] }"""
+        fun profile(captcha: String) = """{ "accessProfiles": [ { "name": "p", "captcha": { "siteKey": "k", "secretKey": "s", $captcha } } ] }"""
         val empty = parseConfig(profile(""""exceptions": [ { "pathPrefix": "" } ]"""))
         assertTrue(empty is ResultOf2.Failure && empty.value.any { "must start with /" in it }, empty.toString())
         val long = parseConfig(profile(""""sessionDuration": "60d""""))
@@ -265,8 +247,6 @@ class DecisionsTest {
         assertNull(claims(token("email_verified" to false)).email)
         assertEquals("a@x.test", claims(token("email_verified" to true)).email)
         assertEquals("a@x.test", claims(token("email_verified" to "true")).email, "Some providers send a string")
-        val user = bayern.kickner.kovexy.access.AppUser("u-1", "Ada", "", "ada")
-        assertEquals("u-1", user.forwardedUser, "S3: X-Forwarded-User is always sub")
     }
 
     @Test

@@ -49,7 +49,6 @@ picked up as well. Every change is checked completely and applied while running:
 | `defaultSite` | static files from `<dataDir>/www` | Answer for domains no site serves |
 | `accessProfiles` | `[]` | Reusable access profiles, see below |
 | `aiCrawlers` | no changes | Changes to the shipped AI crawler list for every profile, see below |
-| `appAuth` | none | OIDC client for the login in front of sites, see below |
 | `incus` | off | Discovery of Incus containers, see below |
 | `upstreams` | `[]` | Upstream groups |
 | `sites` | `[]` | Sites with their locations |
@@ -182,7 +181,7 @@ Daily statistics are kept forever, like Zoraxy. The daily top lists of IP addres
 
 A site or location uses a profile by name, a location with its own profile replaces the one of the site completely.
 The checks run in this order (Zoraxy): block lists, allow lists, exploit filter and trap paths, rate limit, allowed
-methods, captcha, OIDC login, Basic Auth. A refused visitor sees a neutral page, the reason goes to the access log and the security events.
+methods, captcha, Basic Auth. A refused visitor sees a neutral page, the reason goes to the access log and the security events.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -194,7 +193,7 @@ methods, captcha, OIDC login, Basic Auth. A refused visitor sees a neutral page,
 | `allowLocal` | `false` | Private and loopback addresses get in despite the allow lists |
 | `exploitFilter.commonExploits` | `false` | Patterns of Nginx Proxy Manager against query and user agent |
 | `exploitFilter.aiBots` | `false` | AI crawlers by user agent (list of ai.robots.txt) |
-| `exploitFilter.response` | `"forbidden"` | `"forbidden"` (403), `"notFound"` (404), `"badRequest"` (400), `"drop"` (empty 204, connection closed). There is no captcha answer on purpose: a crawler can solve a proof of work |
+| `exploitFilter.response` | `"forbidden"` | `"forbidden"` (403), `"notFound"` (404), `"badRequest"` (400), `"drop"` (empty 204, connection closed). There is no captcha answer on purpose: a crawler could solve it |
 | `trapPaths.enabled` | `false` | Bans whoever calls a trap path, for all sites. A request a browser sends for another site is only refused |
 | `trapPaths.paths` | 15 typical scanner targets | Path prefixes. A location with `match: "exact"` for exactly that path disarms the trap |
 | `trapPaths.banDuration` | `"1h"` | IPv6 addresses are banned per /64 |
@@ -204,16 +203,12 @@ methods, captcha, OIDC login, Basic Auth. A refused visitor sees a neutral page,
 | `basicAuth.users` | required if set | `{ "name": "...", "hash": "..." }`, bcrypt (cost 14 like Caddy) or Argon2id. The admin UI hashes the password. Any length works, below 12 characters the admin UI shows a hint |
 | `basicAuth.realm` | `"Restricted"` | |
 | `basicAuth.exceptions` | `[]` | `{ "pathPrefix": "/public" }` (at path boundaries) or `{ "cidr": "192.168.1.0/24" }` |
-
-| `captcha.provider` | required if set | `"pow"` (Kovexy's own proof of work) or `"google"` (reCAPTCHA) |
 | `captcha.sessionDuration` | `"1h"` | 1m to 30d. A solved captcha counts this long for this profile on this domain. Kept in memory, a restart asks once more |
 | `captcha.protectedPaths` | `[]` (all) | Path prefixes that ask for the captcha |
 | `captcha.exceptions` | `[]` | Like `basicAuth.exceptions` |
-| `captcha.powDifficulty` | `16` | Leading zero bits, 8 to 30, every step doubles the work |
-| `captcha.siteKey`, `captcha.secretKey` | required for google | Keys of the reCAPTCHA site |
+| `captcha.siteKey`, `captcha.secretKey` | required if set | Keys of the Google reCAPTCHA site |
 | `captcha.recaptchaVersion` | `"v2"` | `"v2"` (checkbox) or `"v3"` (invisible) |
 | `captcha.recaptchaScore` | `0.5` | Lowest v3 score that passes |
-| `oidc.allowedSubjects` | `[]` | With `oidc` set, visitors log in at the provider of `appAuth` first. `sub` values that get in, empty lets in everybody the provider lets through |
 
 After a successful Basic Auth login Kovexy removes the `Authorization` header, the password never reaches the
 upstream.
@@ -233,40 +228,18 @@ empty and have at most 200 characters, 1000 entries in all. The Access page edit
 
 #### Captcha
 
-A profile with a captcha or an OIDC login may only be used by sites that are reachable over HTTPS only: on the
-`https` listener, and `http` either off or with `httpsRedirect`. The rate limit of the profile also counts requests to
-Kovexy's own paths under `/.kovexy/`.
+A profile with a captcha may only be used by sites that are reachable over HTTPS only: on the `https` listener, and
+`http` either off or with `httpsRedirect`. The rate limit of the profile also counts requests to Kovexy's own paths
+under `/.kovexy/`. That path belongs to Kovexy on every domain and never reaches an upstream.
 
-A visitor without a valid captcha cookie sees a neutral check page with 403 (like Zoraxy). It posts to
-`/.kovexy/captcha/verify` on the same domain and goes back to the requested address. The proof of work needs no
-third party: the browser searches a number so that SHA-256 of task and number starts with `powDifficulty` zero bits,
-the server checks it with one hash and accepts every task once, within five minutes. Measured on 18.11.2026 in
-Chromium on a desktop: 325,000 hashes per second on one thread, so the default of 16 bits takes about 0.2 s on
-average there. A phone is estimated 5 to 10 times slower (not measured), about 1 to 2 s. The time per visitor varies,
-one in twenty needs three times the average or more. reCAPTCHA is checked at Google on the server and sends visitor
-data to Google. The captcha page has its own content security policy, only with reCAPTCHA it allows Google's scripts
-and frames.
+The captcha is Google reCAPTCHA, Kovexy has no captcha of its own. A visitor without a valid captcha cookie sees a
+neutral check page with 403 (like Zoraxy). It posts to `/.kovexy/captcha/verify` on the same domain and goes back to
+the requested address. The answer is checked at Google on the server, which sends visitor data to Google. The captcha
+page has its own content security policy, only there Google's scripts and frames are allowed.
 
-#### OIDC login in front of a site
-
-Works like oauth2-proxy. The session cookie needs HTTPS, see the rule above. A `GET` without session goes to `/.kovexy/auth/start`, the provider sends the visitor back to
-`https://<domain>/.kovexy/auth/callback` (register this URL for every protected domain). The session lasts 60 minutes
-without requests and 12 hours at most, per domain. The upstream gets `X-Forwarded-User` (always the `sub`),
-`X-Forwarded-Email` (only if the provider confirmed it with `email_verified`) and `X-Forwarded-Preferred-Username`, the
-same headers sent by a visitor are removed. A WebSocket through such a site needs an `Origin` of the same domain. Logout:
-`/.kovexy/auth/logout`. The path `/.kovexy/` belongs to Kovexy on every domain and never reaches an upstream.
-
-### `appAuth`
-
-The OIDC client for logins in front of sites, its own client at the provider, separate from `admin.oidc`, so the
-provider can control both groups apart.
-
-| Field | Default | Meaning |
-|---|---|---|
-| `issuer` | required | Exactly as the provider reports it |
-| `clientId`, `clientSecret` | required | Confidential client |
-| `scopes` | `["openid", "profile", "email"]` | `openid` is required |
-| `forceReauth` | `false` | Sends `prompt=login` on every login |
+Kovexy puts no login in front of apps. Apps that need one protect themselves, or sit behind a Basic Auth profile.
+Visitors cannot name a user towards an app either: `X-Forwarded-User`, `X-Forwarded-Email` and
+`X-Forwarded-Preferred-Username` are removed from every request.
 
 ### `incus`
 

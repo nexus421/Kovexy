@@ -19,10 +19,9 @@ default site, load balancing, health checks, sticky sessions, admin UI guards an
 webhook bundling. Phase 2: IP lists, location profile replacing the site profile, trap paths banning for all sites
 with lift and expiry, exploit filter, AI crawlers, rate limit, methods, Basic Auth, connection limit changed while
 running (with TLS), OIDC login in the modes `oidc` and `both` against a mock provider, audit diff without secrets,
-country data refused on a wrong checksum. Phase 3: proof of work captcha end to end (wrong answer, replay, scope per
-profile and domain, cookie not forwarded), no captcha way past the exploit filter, the rate limit on `/.kovexy/`, reCAPTCHA against a fake Google endpoint (v2, v3
-score), app login in front of a site against the mock provider (redirect, forged user headers dropped, allowed users,
-session per domain, logout), Incus discovery against a fake Incus API on a unix socket (Ktor CIO server: events
+country data refused on a wrong checksum. Phase 3: reCAPTCHA end to end against a fake Google endpoint (v2 and v3, wrong
+answer, scope per profile and domain, cookie not forwarded), no captcha way past the exploit filter, the rate limit on
+`/.kovexy/`, forged identity headers dropped, no login paths of Kovexy on a site, Incus discovery against a fake Incus API on a unix socket (Ktor CIO server: events
 before the list, approve, stop, start, changed domains, remove, reconnect), top lists with the space saving limit,
 percentiles, retention of top IPs, IPv6 peers without brackets. After the Phase 2 decisions: expired certificates of
 unused domains removed, Basic Auth passwords of any length with hint, AI crawler list changed live.
@@ -50,8 +49,7 @@ another one.
 
 Proxy on 18080 (plain) and 18443 (TLS), admin UI on `http://localhost:18000` with the login mode `oidc` against the
 mock OIDC provider from the test sources on port 18001 (pick a user, no password), two demo upstreams behind
-`http://app.localhost:18080` with the access profile `demo-protection` and behind `https://pow.localhost:18443` with the
-proof of work captcha. The password `kovexy dev password only` is set
+`http://app.localhost:18080` with the access profile `demo-protection`. The password `kovexy dev password only` is set
 as well, for switching the login mode. Data in `build/dev`, delete it to start over. ACME uses Let's
 Encrypt staging there and fails, because nobody can reach the machine, that is expected.
 
@@ -92,7 +90,7 @@ tarballs, check the `integrity` value of the registry and update `SHA256SUMS`.
 | `auth` | Password hashing, sessions, login lockout |
 | `stats` | SQLite through Exposed, access log and statistics writer |
 | `notify` | Events and webhooks |
-| `access` | Access profiles: country data, exploit patterns, rate limit, bans, Basic Auth, captcha, app login |
+| `access` | Access profiles: country data, exploit patterns, rate limit, bans, Basic Auth, captcha |
 | `incus` | Incus discovery: API over the unix socket, claims, decisions, dynamic routes |
 | `audit` | Audit log, security events, config diff |
 | `backup` | Backup and restore |
@@ -102,7 +100,7 @@ tarballs, check the `integrity` value of the registry and update `SHA256SUMS`.
 | Path | Purpose |
 |---|---|
 | `GET /login`, `POST /login`, `POST /logout` | Login |
-| `GET /auth/start`, `GET /auth/callback` | OIDC login, public |
+| `GET /auth/start`, `GET /auth/callback` | OIDC login of the admin, public |
 | `/access`, `/access/{name}` | Access profiles |
 | `/security`, `POST /security/lift` | Bans and security events |
 | `/audit` | Audit log |
@@ -130,7 +128,6 @@ On every proxied domain Kovexy owns `/.kovexy/`: `captcha.js`, `POST captcha/ver
 | UI at desktop and phone width, light and dark | Checked in the browser with `devRun` |
 | 10000 idle TLS connections, connection limit at 10000 | Load test against `devRun` on 18.11.2026: about 90 MB heap, the 10001st connection is closed |
 | Download of the real country data | Checked with `devRun` on 18.11.2026 |
-| Proof of work in a real browser | `devRun` on 18.11.2026, Chromium on a desktop: 325,000 hashes per second, 16 bits about 0.2 s and 18 bits about 0.8 s on average |
 | Phase 3 pages at desktop and phone width | Checked in the browser with `devRun` on 18.11.2026 (Incus only without containers) |
-| Incus with a real Incus, proof of work on a phone, real reCAPTCHA | Not tested |
+| Incus with a real Incus, real reCAPTCHA | Not tested |
 | Real Let's Encrypt, real OIDC provider, long running operation, throughput | Not tested |

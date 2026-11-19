@@ -65,7 +65,6 @@ const val LETS_ENCRYPT_STAGING = "https://acme-staging-v02.api.letsencrypt.org/d
  * @property defaultSite What happens for a domain no site serves.
  * @property accessProfiles Reusable access profiles for sites and locations.
  * @property aiCrawlers Changes to the shipped AI crawler list, for every profile.
- * @property appAuth OIDC client for protecting apps behind the proxy, separate from the admin login.
  * @property incus Discovery of Incus containers.
  * @property upstreams Reusable groups of upstream servers.
  * @property sites Sites with their domains and locations.
@@ -84,7 +83,6 @@ data class KovexyConfig(
     val defaultSite: DefaultSite = DefaultSite.Static(),
     val accessProfiles: List<AccessProfile> = emptyList(),
     val aiCrawlers: AiCrawlersConfig = AiCrawlersConfig(),
-    val appAuth: AppAuthConfig? = null,
     val incus: IncusConfig = IncusConfig(),
     val upstreams: List<UpstreamConfig> = emptyList(),
     val sites: List<SiteConfig> = emptyList(),
@@ -575,7 +573,6 @@ val DEFAULT_TRAP_PATHS: List<String> = listOf(
  * @property allowedMethods Allowed HTTP methods, empty allows all. Others get 405.
  * @property basicAuth HTTP Basic Auth, off without it.
  * @property captcha Captcha before the site, off without it.
- * @property oidc Login through [KovexyConfig.appAuth] before the site, off without it.
  */
 @Serializable
 data class AccessProfile(
@@ -591,7 +588,6 @@ data class AccessProfile(
     val allowedMethods: List<String> = emptyList(),
     val basicAuth: BasicAuthConfig? = null,
     val captcha: CaptchaConfig? = null,
-    val oidc: AppOidcConfig? = null,
 ) {
     /** Whether the profile uses country rules. */
     val usesCountries: Boolean get() = denyCountries.isNotEmpty() || allowCountries.isNotEmpty()
@@ -687,18 +683,6 @@ data class BasicAuthUser(val name: String, val hash: String)
 @Serializable
 data class BasicAuthException(val pathPrefix: String? = null, val cidr: String? = null)
 
-/** Captcha providers. */
-@Serializable
-enum class CaptchaProvider {
-    /** Google reCAPTCHA v2 or v3, checked against Google on the server. */
-    @SerialName("google")
-    GOOGLE,
-
-    /** Kovexy's own proof of work: the browser solves a small calculation. */
-    @SerialName("pow")
-    POW,
-}
-
 /** reCAPTCHA versions. */
 @Serializable
 enum class RecaptchaVersion {
@@ -711,21 +695,10 @@ enum class RecaptchaVersion {
     V3,
 }
 
-/** Default proof of work difficulty in leading zero bits, see the measurement in docs/configuration.md. */
-const val DEFAULT_POW_DIFFICULTY = 16
-
 /**
- * Measured solving time of the default difficulty, shown in the admin UI. Measured on 18.11.2026 in Chromium on a
- * desktop (325,000 hashes per second, one thread): 16 bits take about 0.2 s on average. A phone is estimated 5 to 10
- * times slower, so about 1 to 2 s, the target of the specification. The phone is an estimate, not a measurement.
- */
-const val POW_DIFFICULTY_HINT = "16 takes about 0.2 s on average on a desktop (measured) and about 1 to 2 s on a phone (estimated). A single visitor can need three times the average."
-
-/**
- * A captcha before the site (Zoraxy `captcha.Config`). A solved captcha is valid for [sessionDuration], kept only in
- * memory like Zoraxy, a restart asks once more.
+ * A Google reCAPTCHA before the site (Zoraxy `captcha.Config`). A solved captcha is valid for [sessionDuration], kept
+ * only in memory like Zoraxy, a restart asks once more.
  *
- * @property provider Google or proof of work.
  * @property siteKey Google site key.
  * @property secretKey Google secret key.
  * @property recaptchaVersion v2 or v3.
@@ -733,11 +706,9 @@ const val POW_DIFFICULTY_HINT = "16 takes about 0.2 s on average on a desktop (m
  * @property sessionDuration How long a solved captcha counts.
  * @property protectedPaths Only these path prefixes, empty protects everything.
  * @property exceptions Requests that never see the captcha.
- * @property powDifficulty Leading zero bits of the proof of work, every bit doubles the work.
  */
 @Serializable
 data class CaptchaConfig(
-    val provider: CaptchaProvider,
     val siteKey: String = "",
     val secretKey: String = "",
     val recaptchaVersion: RecaptchaVersion = RecaptchaVersion.V2,
@@ -745,34 +716,6 @@ data class CaptchaConfig(
     val sessionDuration: TextDuration = 1.hours,
     val protectedPaths: List<String> = emptyList(),
     val exceptions: List<BasicAuthException> = emptyList(),
-    val powDifficulty: Int = DEFAULT_POW_DIFFICULTY,
-)
-
-/**
- * OIDC login before an app, like oauth2-proxy.
- *
- * @property allowedSubjects `sub` claims that get in, empty lets in everybody the provider lets through.
- */
-@Serializable
-data class AppOidcConfig(val allowedSubjects: List<String> = emptyList())
-
-/**
- * The OIDC client for apps, separate from the admin login so the provider can control both groups apart. The callback
- * of every protected domain is `https://<domain>/.kovexy/auth/callback`.
- *
- * @property issuer Issuer URL exactly as the provider reports it.
- * @property clientId Client ID.
- * @property clientSecret Secret of the confidential client.
- * @property scopes Requested scopes, `openid` is mandatory.
- * @property forceReauth Sends `prompt=login` on every login.
- */
-@Serializable
-data class AppAuthConfig(
-    val issuer: String,
-    val clientId: String,
-    val clientSecret: String,
-    val scopes: List<String> = listOf("openid", "profile", "email"),
-    val forceReauth: Boolean = false,
 )
 
 /**

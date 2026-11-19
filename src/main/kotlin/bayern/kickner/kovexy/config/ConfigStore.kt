@@ -9,7 +9,7 @@ import bayern.kickner.kovexy.setPermissions
 import bayern.kickner.kovexy.sha256Hex
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
-import kotnexlib.ResultOf2
+import bayern.kickner.kovexy.ResultOf2
 import java.io.File
 import java.nio.file.FileSystems
 import java.nio.file.Files

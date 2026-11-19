@@ -39,9 +39,6 @@ const val GOOGLE_SITEVERIFY = "https://www.google.com/recaptcha/api/siteverify"
 const val CAPTCHA_COOKIE = "__Host-kovexy-captcha"
 
 
-/** A proof of work task is valid this long and only once. */
-val POW_TASK_LIFETIME = 5.minutes
-
 /** A captcha page is valid this long, then it asks again. */
 val CAPTCHA_PAGE_LIFETIME = 10.minutes
 
@@ -78,9 +75,6 @@ const val MAX_CAPTCHA_SESSIONS = 100_000
 
 /** reCAPTCHA checks one address may have running at Google at the same time. */
 const val MAX_GOOGLE_CHECKS_PER_ADDRESS = 2
-
-/** Proof of work tasks Kovexy remembers as used at most. When it is full, new solutions are refused until tasks expire. */
-const val MAX_USED_POW_TASKS = 200_000
 
 /** Expired captcha entries are removed at most this often, never on every request (audit run-2). */
 private const val CAPTCHA_PURGE_MILLIS = 30_000L
@@ -125,59 +119,6 @@ class CaptchaSessions(private val max: Int = MAX_CAPTCHA_SESSIONS, private val c
         }
         return entry.scope == scope
     }
-}
-
-/**
- * Kovexy's proof of work. The server hands out a signed task (random value, difficulty, expiry), the browser searches a
- * number so that SHA-256 of `task:number` starts with as many zero bits as the difficulty says, the server checks it
- * with one hash. Every task counts once. The principle is known from ALTCHA and Anubis, no code is taken from there.
- */
-class ProofOfWork(private val signer: Signer, private val max: Int = MAX_USED_POW_TASKS, private val clock: () -> Long = System::currentTimeMillis) {
-    private val used = ConcurrentHashMap<String, Long>()
-    private val lastPurge = AtomicLong(0)
-
-    /** Whether the list of used tasks is full, new solutions are refused until tasks expire. */
-    val full: Boolean get() = used.size >= max
-
-    /** A new task: `random~difficulty~expiry.signature`. */
-    fun task(difficulty: Int): String = signer.sign("${randomToken(16)}~$difficulty~${clock() + POW_TASK_LIFETIME.inWholeMilliseconds}")
-
-    /**
-     * Checks a solution.
-     *
-     * @param minDifficulty The difficulty the profile asks for, an easier task does not count.
-     * @return whether the solution is valid. A valid task cannot be used again.
-     */
-    fun verify(task: String, nonce: String, minDifficulty: Int): Boolean {
-        val payload = signer.verify(task) ?: return false
-        val parts = payload.split('~')
-        if (parts.size != 3) return false
-        val difficulty = parts[1].toIntOrNull() ?: return false
-        val expiresAt = parts[2].toLongOrNull() ?: return false
-        val now = clock()
-        if (difficulty < minDifficulty || expiresAt < now || nonce.length > 20 || nonce.any { it !in '0'..'9' }) return false
-        if (leadingZeroBits(MessageDigest.getInstance("SHA-256").digest("$task:$nonce".toByteArray())) < difficulty) return false
-        val last = lastPurge.get()
-        if (now - last > CAPTCHA_PURGE_MILLIS && lastPurge.compareAndSet(last, now)) used.values.removeIf { it < now }
-        // Forgetting a used task that has not expired would let it count twice, so a full list refuses instead
-        if (used.size >= max) return false
-        return used.putIfAbsent(task, expiresAt) == null
-    }
-}
-
-/** Number of leading zero bits of [bytes]. */
-fun leadingZeroBits(bytes: ByteArray): Int {
-    var bits = 0
-    for (b in bytes) {
-        val v = b.toInt() and 0xFF
-        if (v == 0) {
-            bits += 8
-            continue
-        }
-        bits += Integer.numberOfLeadingZeros(v) - 24
-        break
-    }
-    return bits
 }
 
 /**
@@ -227,8 +168,8 @@ class GoogleVerifier(private val endpoint: String = GOOGLE_SITEVERIFY) {
 }
 
 /**
- * Everything the captcha needs: sessions, proof of work, Google check, and the signed page token that carries the
- * profile, the domain and the address to return to through the form.
+ * Everything the captcha needs: sessions, the Google check, and the signed page token that carries the profile, the
+ * domain and the address to return to through the form.
  */
 class CaptchaService(
     val google: GoogleVerifier = GoogleVerifier(),
@@ -238,9 +179,6 @@ class CaptchaService(
 
     /** Solved captchas. */
     val sessions = CaptchaSessions(clock = clock)
-
-    /** Proof of work tasks. */
-    val pow = ProofOfWork(signer, clock = clock)
 
     /** The scope of a session: one profile on one domain. */
     fun scope(profile: String, domain: String) = "$profile|$domain"

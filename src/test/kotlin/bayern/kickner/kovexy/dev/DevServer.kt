@@ -28,7 +28,7 @@ const val DEV_PASSWORD = "kovexy dev password only"
  * Starts Kovexy for local development with two demo upstreams and the [MockOidcProvider]: run `./gradlew devRun`
  * and open `http://localhost:18000`, log in through the mock provider (login mode `oidc`, the password
  * [DEV_PASSWORD] is set as well for switching the mode). `http://app.localhost:18080` reaches the demo upstreams
- * through the proxy, `https://pow.localhost:18443` asks for the proof of work captcha first (captcha only over HTTPS). Data lives in `build/dev`, delete it to start over. ACME cannot reach this machine, so the
+ * through the proxy. Data lives in `build/dev`, delete it to start over. ACME cannot reach this machine, so the
  * certificate pages show failures, that is expected.
  */
 fun main() {
@@ -48,8 +48,7 @@ fun main() {
                 "oidc": { "issuer": "${oidc.issuer}", "clientId": "kovexy-dev", "clientSecret": "${oidc.clientSecret}", "forceReauth": false }
               },
               "accessProfiles": [
-                { "name": "demo-protection", "exploitFilter": { "commonExploits": true }, "trapPaths": { "enabled": true }, "rateLimit": { "requestsPerSecond": 50 } },
-                { "name": "demo-captcha", "captcha": { "provider": "pow" } }
+                { "name": "demo-protection", "exploitFilter": { "commonExploits": true }, "trapPaths": { "enabled": true }, "rateLimit": { "requestsPerSecond": 50 } }
               ],
               "acme": { "staging": true },
               "upstreams": [
@@ -59,9 +58,6 @@ fun main() {
                 { "domains": ["app.localhost"], "httpsRedirect": false, "access": "demo-protection", "locations": [
                   { "path": "/", "target": { "type": "upstream", "upstream": "demo" } },
                   { "path": "/.git", "target": { "type": "deny", "status": 404 } }
-                ] },
-                { "domains": ["pow.localhost"], "access": "demo-captcha", "locations": [
-                  { "path": "/", "target": { "type": "upstream", "upstream": "demo" } }
                 ] }
               ]
             }
@@ -73,7 +69,7 @@ fun main() {
         config.writeText(config.readText().replace(Regex("""127\.0\.0\.1:\d+""")) { "127.0.0.1:${if (n++ == 0) first.port else second.port}" })
     }
     val store = ConfigStore(dir)
-    check(store.load() is kotnexlib.ResultOf2.Success) { "build/dev/kovexy.json is invalid, delete build/dev to start over" }
+    check(store.load() is bayern.kickner.kovexy.ResultOf2.Success) { "build/dev/kovexy.json is invalid, delete build/dev to start over" }
     val kovexy = createKovexy(store, Ports(DEV_HTTP_PORT, DEV_HTTPS_PORT))
     kovexy.start()
     println("Admin UI on http://localhost:$DEV_ADMIN_PORT, login through the mock OIDC provider at ${oidc.issuer} (password for mode changes: $DEV_PASSWORD)")

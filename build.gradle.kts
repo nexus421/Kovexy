@@ -29,7 +29,6 @@ dependencyLocking {
 
 dependencies {
     implementation("bayern.kickner:Klogger:0.5.0")
-    implementation("bayern.kickner:KotNexLib:4.4.1")
 
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-jetty-jakarta:$ktorVersion")
@@ -49,7 +48,7 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
     implementation("org.xerial:sqlite-jdbc:3.54.1.0")
 
-    // acme4j and KotNexLib pull different BouncyCastle releases. The BOM lifts every BC module to the same one
+    // The BOM keeps every BouncyCastle module (bcpkix pulls bcutil and bcprov) on the same release
     implementation(platform("org.bouncycastle:bc-jdk18on-bom:1.87"))
     implementation("org.bouncycastle:bcprov-jdk18on")
     implementation("org.bouncycastle:bcpkix-jdk18on")

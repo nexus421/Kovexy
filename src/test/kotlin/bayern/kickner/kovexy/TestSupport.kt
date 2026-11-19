@@ -225,7 +225,13 @@ class FakeIssuer(var lifetimeMillis: Long = 90L * 24 * 3600 * 1000, var fail: Bo
  *
  * @param config Text of `kovexy.json`. `ADMIN_PORT` is replaced by the admin port.
  */
-class Harness(config: String, val issuer: FakeIssuer = FakeIssuer(), clock: () -> Long = System::currentTimeMillis, val adminPort: Int = freePort()) : AutoCloseable {
+class Harness(
+    config: String,
+    val issuer: FakeIssuer = FakeIssuer(),
+    clock: () -> Long = System::currentTimeMillis,
+    val adminPort: Int = freePort(),
+    googleSiteverify: String = bayern.kickner.kovexy.access.GOOGLE_SITEVERIFY,
+) : AutoCloseable {
     val dataDir: File = Files.createTempDirectory("kovexy-test").toFile()
     val ports = Ports(freePort(), freePort())
     val store = ConfigStore(dataDir)
@@ -234,8 +240,8 @@ class Harness(config: String, val issuer: FakeIssuer = FakeIssuer(), clock: () -
     init {
         File(dataDir, "kovexy.json").writeText(config.replace("ADMIN_PORT", adminPort.toString()))
         val loaded = store.load()
-        check(loaded is kotnexlib.ResultOf2.Success) { "Test config rejected: $loaded" }
-        kovexy = createKovexy(store, ports, issuer = { _: CertStore, _: ChallengeStore, _: () -> String -> issuer }, clock = clock)
+        check(loaded is bayern.kickner.kovexy.ResultOf2.Success) { "Test config rejected: $loaded" }
+        kovexy = createKovexy(store, ports, issuer = { _: CertStore, _: ChallengeStore, _: () -> String -> issuer }, googleSiteverify = googleSiteverify, clock = clock)
         kovexy.start()
     }
 

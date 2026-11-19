@@ -15,12 +15,12 @@ sidebar, on a phone the button "Menu" opens it.
 | Certificates | Every domain with state, expiry and issuer, "Renew now", ACME settings |
 | Statistics | Charts per site for 24 hours, 7, 30 and 365 days: requests by status class, response time with median, 95th and 99th percentile, traffic, and daily top lists of IPs, countries, paths, user agents, referers, methods, upstream servers and refusals by reason |
 | Access log | The latest requests, filtered by site, status class and text |
-| Access | Access profiles: IP and country rules, exploit filter, trap paths, rate limit, methods, captcha, OIDC login, Basic Auth, the state of the country data, and changes to the AI crawler list for every profile |
+| Access | Access profiles: IP and country rules, exploit filter, trap paths, rate limit, methods, captcha, Basic Auth, the state of the country data, and changes to the AI crawler list for every profile |
 | Webhooks | Targets with template and events, the KNot preset and a test message |
 | Security | Active bans with "Lift", the latest security events by kind |
 | Audit | Who changed what and when, config changes with a diff, secrets as `***` |
 | Incus | Detected containers with "Approve" and "Reject", approved ones with "Remove", copy-ready `incus config set` commands for running containers without keys, the Incus settings |
-| Settings | Login mode and OIDC provider, app login (OIDC in front of sites) with the callback URLs to register, password, sessions, admin address, trusted proxies, limits, retention, update check, backup and restore |
+| Settings | Login mode and OIDC provider, password, sessions, admin address, trusted proxies, limits, retention, update check, backup and restore |
 
 Every save is checked, applied at once and logged. If the configuration changed in the meantime (another tab or an
 edit of the file), the save is refused and the page asks to reload. As long as only the password protects the admin
@@ -34,8 +34,8 @@ In this order:
 2. Banned addresses (from trap paths) get 403, for all sites.
 3. The site is chosen by domain and listener. A `Host` that names another domain than the request's authority gets
    400. A site's domain on a listener the site does not use gets 404. Any other domain goes to the default site.
-4. Plain HTTP with `httpsRedirect` gets `308` to HTTPS. Then Kovexy's own paths under `/.kovexy/` (captcha, app
-   login), they never reach an upstream.
+4. Plain HTTP with `httpsRedirect` gets `308` to HTTPS. Then Kovexy's own paths under `/.kovexy/` (captcha),
+   they never reach an upstream.
 5. The most specific location: longer paths before shorter ones, exact before prefix. A prefix only matches at path
    boundaries, `/api` matches `/api` and `/api/users` but not `/apix`. Upper and lower case count like in Caddy, `/Admin` is not
    `/admin`. An app that treats paths without case (some Windows or PHP apps) needs a rule for every spelling or a
@@ -80,7 +80,7 @@ five identical certificates per week). Expired ones are deleted, the audit log r
 Settings, Backup downloads a ZIP with `kovexy.json` and the certificates, optionally with the database. It is not
 encrypted and holds the private keys. Restore uploads such a ZIP: the current state is saved to
 `<dataDir>/backups/restore-<time>.zip` first, then everything is replaced and applied at once. A restore with
-database ends every admin and app login, also your own, you log in again.
+database ends every admin login, also your own, you log in again.
 
 ## Login
 

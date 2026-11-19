@@ -29,7 +29,7 @@ import io.ktor.server.websocket.WebSockets
 import io.ktor.util.AttributeKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.html.p
-import kotnexlib.ResultOf2
+import bayern.kickner.kovexy.ResultOf2
 
 private const val TAG = "Admin"
 

@@ -37,9 +37,8 @@ const val BASIC_AUTH_CACHE_MILLIS = 10L * 60 * 1000
  * @property userAgent The `User-Agent`.
  * @property authorization The `Authorization` header.
  * @property exactLocation Whether a location with `match: "exact"` serves exactly this path, then traps do not fire.
- * @property domain Requested domain, captcha and app login are per domain.
+ * @property domain Requested domain, a solved captcha counts for one domain.
  * @property captchaCookie Value of the captcha cookie.
- * @property appAuthCookie Value of the app login cookie.
  * @property isWebSocket Whether the request is a WebSocket upgrade, which cannot follow a redirect.
  * @property foreignInitiated Whether a browser sent the request on behalf of another site (see [isForeignInitiated]).
  *   Such a request never bans the address, any web page could otherwise get its visitors banned.
@@ -55,7 +54,6 @@ data class AccessRequest(
     val exactLocation: Boolean,
     val domain: String = "",
     val captchaCookie: String? = null,
-    val appAuthCookie: String? = null,
     val isWebSocket: Boolean = false,
     val foreignInitiated: Boolean = false,
 )
@@ -88,7 +86,7 @@ sealed interface AccessResult {
      * @property basicAuthUser The Basic Auth user, if Basic Auth let it in. The proxy then removes the
      *   `Authorization` header, so the password does not reach the upstream.
      */
-    data class Allow(val basicAuthUser: String? = null, val appUser: AppUser? = null) : AccessResult
+    data class Allow(val basicAuthUser: String? = null) : AccessResult
 
     /**
      * Refused.
@@ -114,9 +112,6 @@ sealed interface AccessResult {
      * @property config Its captcha.
      */
     data class CaptchaRequired(val profile: String, val config: CaptchaConfig) : AccessResult
-
-    /** The app login is needed: a redirect to the provider, or 401 for requests that cannot follow one. */
-    data object LoginRequired : AccessResult
 }
 
 /**
@@ -253,7 +248,7 @@ class BasicAuthChecker(private val clock: () -> Long = System::currentTimeMillis
  * 4. rate limit,
  * 5. allowed methods,
  * 6. captcha,
- * 7. OIDC login and Basic Auth.
+ * 7. Basic Auth.
  *
  * Every refusal is a security event, the reason goes to the access log, the visitor only sees a neutral page.
  */
@@ -264,7 +259,6 @@ class AccessChecker(
     private val rateLimiter: RateLimiter,
     private val basicAuth: BasicAuthChecker,
     private val captcha: CaptchaService,
-    private val appAuth: AppAuthService,
     private val aiCrawlers: () -> AiCrawlersConfig = { AiCrawlersConfig() },
 ) {
     suspend fun check(profile: AccessProfile, request: AccessRequest): AccessResult {
@@ -324,23 +318,15 @@ class AccessChecker(
             if (solved.not() && captchaApplies(config, request.path, excepted)) return AccessResult.CaptchaRequired(profile.name, config)
         }
 
-        // 7. OIDC, then Basic Auth
-        var appUser: AppUser? = null
-        profile.oidc?.let { oidc ->
-            val user = appAuth.user(request.appAuthCookie, request.domain) ?: return AccessResult.LoginRequired
-            if (oidc.allowedSubjects.isNotEmpty() && user.sub !in oidc.allowedSubjects) {
-                return deny(403, "oidc user ${user.sub} not allowed", SecurityEventType.ACCESS_DENIED, request)
-            }
-            appUser = user
-        }
-        val auth = profile.basicAuth ?: return AccessResult.Allow(appUser = appUser)
+        // 7. Basic Auth
+        val auth = profile.basicAuth ?: return AccessResult.Allow()
         val excepted = auth.exceptions.any { e ->
             e.pathPrefix?.let { p -> p == "/" || request.path == p.trimEnd('/') || request.path.startsWith(p.trimEnd('/') + "/") } == true ||
                 e.cidr?.let { cachedCidr(it)?.contains(request.address) } == true
         }
-        if (excepted) return AccessResult.Allow(appUser = appUser)
+        if (excepted) return AccessResult.Allow()
         return when (val result = basicAuth.check(auth, request.authorization, ip, profile.name)) {
-            is BasicResult.Ok -> AccessResult.Allow(result.user, appUser)
+            is BasicResult.Ok -> AccessResult.Allow(result.user)
             BasicResult.Missing -> AccessResult.Challenge(auth.realm, "basic auth required")
             BasicResult.Locked -> deny(429, "basic auth locked out", SecurityEventType.BASIC_AUTH_FAILED, request)
             BasicResult.Busy -> AccessResult.Deny(503, "basic auth busy")

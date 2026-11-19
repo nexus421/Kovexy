@@ -10,7 +10,7 @@ const val MASK = "***"
 private const val MAX_DIFF_LINES = 4000
 
 /**
- * The config with every secret replaced by [MASK]: password hash, OIDC client secrets (admin and apps), Basic Auth
+ * The config with every secret replaced by [MASK]: password hash, the OIDC client secret of the admin login, Basic Auth
  * hashes, reCAPTCHA secret keys and the values of webhook headers (they usually hold API keys). Empty values stay empty, so the diff still shows when a secret
  * was set or removed.
  */
@@ -25,7 +25,6 @@ fun maskSecrets(config: KovexyConfig): KovexyConfig = config.copy(
             captcha = profile.captcha?.let { it.copy(secretKey = it.secretKey.mask()) },
         )
     },
-    appAuth = config.appAuth?.let { it.copy(clientSecret = it.clientSecret.mask()) },
     webhooks = config.webhooks.map { hook -> hook.copy(url = maskUrl(hook.url), headers = hook.headers.mapValues { it.value.mask() }) },
 )
 
@@ -42,7 +41,6 @@ private fun maskUrl(url: String): String {
 private fun secretChanges(old: KovexyConfig, new: KovexyConfig): List<String> = buildList {
     if (old.admin.passwordHash != new.admin.passwordHash) add("admin.passwordHash")
     if (old.admin.oidc?.clientSecret != new.admin.oidc?.clientSecret) add("admin.oidc.clientSecret")
-    if (old.appAuth?.clientSecret != new.appAuth?.clientSecret && old.appAuth != null && new.appAuth != null) add("appAuth.clientSecret")
     new.accessProfiles.forEach { profile ->
         val oldCaptcha = old.accessProfiles.firstOrNull { it.name == profile.name }?.captcha
         if (oldCaptcha != null && profile.captcha != null && oldCaptcha.secretKey != profile.captcha.secretKey) add("reCAPTCHA secret key in profile ${profile.name}")

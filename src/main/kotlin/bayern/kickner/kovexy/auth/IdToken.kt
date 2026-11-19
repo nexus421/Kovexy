@@ -2,7 +2,7 @@ package bayern.kickner.kovexy.auth
 
 import bayern.kickner.kovexy.cleanText
 import kotlinx.serialization.json.*
-import kotnexlib.ResultOf2
+import bayern.kickner.kovexy.ResultOf2
 import java.security.MessageDigest
 import java.util.*
 

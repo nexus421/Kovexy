@@ -141,3 +141,10 @@ fun visitorIp(peer: String, forwardedFor: List<String>, trusted: List<Cidr>): St
     val chain = forwardedFor.flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }
     return chain.lastOrNull { isTrusted(it, trusted).not() && parseIpLiteral(it) != null } ?: peer
 }
+
+/**
+ * Headers that name the logged in user towards an app (the convention of oauth2-proxy and forward auth). Kovexy sets
+ * none of them, so every one a visitor sends is forged and removed from the request, an app that trusts them behind
+ * Kovexy must not be fooled.
+ */
+val IDENTITY_HEADERS = listOf("X-Forwarded-User", "X-Forwarded-Email", "X-Forwarded-Preferred-Username")

@@ -78,16 +78,17 @@
   WebSockets. Static files that are being sent finish.
 - The site is picked by the request's authority, a `Host` header naming another domain gets 400 (HTTP/2 without
   `:authority` would otherwise reach the default site with the `Host` of a protected one).
-- `X-Forwarded-User`, `-Email`, `-Preferred-Username` and the other headers Kovexy sets or removes are also removed in
+- `X-Forwarded-User`, `-Email`, `-Preferred-Username` and the other headers Kovexy removes are also removed in
   spellings with `_`, `.` or any other character instead of `-`, which CGI style servers read as the same header.
 - The neutral error pages never show internals.
 - Forms are read with a size limit (1 MiB in the admin UI, 16 KiB on proxied domains), a bigger body counts as an
   empty form and is never read into memory as a whole.
 - Paths under `/.kovexy/` are recognized on the cleaned path, `/%2Ekovexy/` is Kovexy's too and never reaches an
   upstream.
-- Kovexy's own cookies (app login, captcha) are removed from the `Cookie` header before a request goes to an
-  upstream, an app never sees a session it could replay. `X-Forwarded-User`, `-Email` and `-Preferred-Username` from
-  the visitor are always removed, only the app login sets them.
+- Kovexy's own cookie (captcha) is removed from the `Cookie` header before a request goes to an upstream, an app never
+  sees a session it could replay. `X-Forwarded-User`, `-Email` and `-Preferred-Username` from the visitor are always
+  removed. Kovexy sets none of them (it has no login in front of apps), so an app that trusts them behind Kovexy is not
+  fooled by a visitor.
 
 ## Data on disk
 
@@ -97,7 +98,7 @@
 - A restore only accepts `kovexy.json`, `kovexy.db` and `.pem` files in certificate directories, with size limits,
   and checks the config completely before anything is replaced. Upload and database are streamed through files, never
   held in memory. The database is restored with SQLite's backup API, bans are reloaded at once. A restored database
-  ends every admin and app login, also the one of the admin who restores: sessions in the backup may have been ended
+  ends every admin login, also the one of the admin who restores: sessions in the backup may have been ended
   since.
 - A stored key that does not match its certificate is not loaded, the domain gets a new certificate.
 - The command line (`reset-password`, `login-mode`, `check`) usually runs as root and never follows a symbolic link
@@ -139,20 +140,13 @@ turned off under Settings.
   longer than 2 seconds for one gets 503 and does not count as a failure. Kovexy's Basic Auth credentials are removed
   before the request goes to the upstream, also on excepted paths and locations with another profile.
 - Rate limits count per profile and address in one second windows.
-- Captcha: page tokens and proof of work tasks are signed with an HMAC key that is new on every start, a task counts
-  once and for five minutes, the return address only takes paths on the same host (never `//host` or a URL). Solved
-  captchas are random IDs in memory, valid for one profile on one domain, the cookie is `__Host-`, `HttpOnly`, `SameSite=Lax`
-  and `Secure`, the captcha only runs on sites reachable over HTTPS only. At most 100.000 solved captchas are kept, the
-  oldest go first, and 200.000 used tasks, when full new solutions are refused until tasks expire. The exploit filter never answers with a
-  captcha, a crawler can solve a proof of work. The rate limit of the profile also covers `/.kovexy/`. reCAPTCHA answers are checked at Google on the server.
-- App login (OIDC in front of sites): authorization code flow with PKCE, state and nonce like the admin login, only
-  over HTTPS, a session per domain in memory and in SQLite (only a hash of the token), the proxy only reads the
-  memory, so unknown cookies never reach the database, 60 minutes idle and 12 hours at most, cookies
-  `__Host-` with `Secure`, `HttpOnly` and `SameSite=Lax`. Allowed users are checked on every request, and a login of a
-  user no OIDC profile of the site allows creates no session. `X-Forwarded-User` is always the `sub`, the only claim
-  that is unique at the provider, `X-Forwarded-Email` only comes with `email_verified`. A WebSocket that the app login
-  or the captcha lets in needs an `Origin` of the same domain, a foreign page cannot open it with the visitor's
-  cookies. The captcha checks at most 2 reCAPTCHA answers of one address at a time.
+- Captcha: page tokens are signed with an HMAC key that is new on every start, the return address only takes paths on
+  the same host (never `//host` or a URL). Solved captchas are random IDs in memory, valid for one profile on one
+  domain, the cookie is `__Host-`, `HttpOnly`, `SameSite=Lax` and `Secure`, the captcha only runs on sites reachable
+  over HTTPS only. At most 100.000 solved captchas are kept, the oldest go first. The exploit filter never answers with
+  a captcha, a crawler could solve it. The rate limit of the profile also covers `/.kovexy/`. reCAPTCHA answers are
+  checked at Google on the server, at most 2 of one address at a time. A WebSocket that the captcha lets in needs an
+  `Origin` of the same domain, a foreign page cannot open it with the visitor's cookies.
 - Incus: the socket gives root access to the host, Kovexy only reads it and needs root for it. Only the projects in
   `incus.projects` count, only keys of the instance itself (not of profiles), and nothing goes live without a click.
   An approval covers the domains, the address, the port, HTTPS and the access profile shown on the page, a change of

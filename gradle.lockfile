@@ -3,7 +3,6 @@
 # This file is expected to be part of source control.
 # To regenerate this file, run: ./gradlew :dependencies --write-locks
 bayern.kickner:Klogger:0.5.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
-bayern.kickner:KotNexLib:4.4.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 com.typesafe:config:1.4.9=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 io.ktor:ktor-client-apache5-jvm:3.6.1=testCompileClasspath,testRuntimeClasspath
 io.ktor:ktor-client-apache5:3.6.1=testCompileClasspath,testRuntimeClasspath
@@ -133,8 +132,7 @@ org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.0=kotlinAbiValidationCompatCla
 org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.21=kotlinBuildToolsApiClasspath,kotlinCompilerClasspath,kotlinKlibCommonizerClasspath
 org.jetbrains.kotlin:kotlin-klib-commonizer-embeddable:2.4.21=kotlinKlibCommonizerClasspath
 org.jetbrains.kotlin:kotlin-reflect:1.6.10=kotlinAbiValidationCompatClasspath,kotlinBuildToolsApiClasspath,kotlinCompilerClasspath,kotlinKlibCommonizerClasspath
-org.jetbrains.kotlin:kotlin-reflect:2.3.21=compileClasspath,testCompileClasspath
-org.jetbrains.kotlin:kotlin-reflect:2.4.10=runtimeClasspath,testRuntimeClasspath
+org.jetbrains.kotlin:kotlin-reflect:2.3.21=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.jetbrains.kotlin:kotlin-script-runtime:2.4.0=kotlinAbiValidationCompatClasspath
 org.jetbrains.kotlin:kotlin-script-runtime:2.4.21=kotlinBuildToolsApiClasspath,kotlinCompilerClasspath,kotlinCompilerPluginClasspathMain,kotlinCompilerPluginClasspathTest,kotlinKlibCommonizerClasspath
 org.jetbrains.kotlin:kotlin-scripting-common:2.4.21=kotlinCompilerPluginClasspathMain,kotlinCompilerPluginClasspathTest

@@ -8,7 +8,6 @@ import bayern.kickner.kovexy.auth.hashPassword
 import bayern.kickner.kovexy.config.ConfigStore
 import bayern.kickner.kovexy.config.LoginMode
 import bayern.kickner.kovexy.config.SaveError
-import kotnexlib.ResultOf2
 import java.io.File
 import java.net.BindException
 import java.util.concurrent.CountDownLatch

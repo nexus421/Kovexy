@@ -8,11 +8,7 @@ import bayern.kickner.kovexy.access.shippedAiBotNames
 import bayern.kickner.kovexy.config.AiCrawlersConfig
 import bayern.kickner.kovexy.config.BasicAuthConfig
 import bayern.kickner.kovexy.config.BasicAuthException
-import bayern.kickner.kovexy.config.AppOidcConfig
 import bayern.kickner.kovexy.config.CaptchaConfig
-import bayern.kickner.kovexy.config.CaptchaProvider
-import bayern.kickner.kovexy.config.DEFAULT_POW_DIFFICULTY
-import bayern.kickner.kovexy.config.POW_DIFFICULTY_HINT
 import bayern.kickner.kovexy.config.RecaptchaVersion
 import bayern.kickner.kovexy.config.BasicAuthUser
 import bayern.kickner.kovexy.config.DEFAULT_TRAP_PATHS
@@ -199,8 +195,7 @@ private fun profileSummary(p: AccessProfile): String = buildList {
     if (p.trapPaths.enabled) add("trap paths")
     p.rateLimit?.let { add("${it.requestsPerSecond} req/s") }
     if (p.allowedMethods.isNotEmpty()) add(p.allowedMethods.joinToString("/"))
-    p.captcha?.let { add(if (it.provider == CaptchaProvider.POW) "proof of work" else "reCAPTCHA") }
-    if (p.oidc != null) add("OIDC login")
+    if (p.captcha != null) add("reCAPTCHA")
     if (p.basicAuth != null) add("Basic Auth")
 }.ifEmpty { listOf("no rules") }.joinToString(", ")
 
@@ -263,21 +258,17 @@ private suspend fun profileFromForm(params: Parameters, existing: AccessProfile?
     } else null
 
     val captcha = if (params["captchaEnabled"] != null) {
-        val provider = CaptchaProvider.entries.firstOrNull { it.name == params["captchaProvider"] } ?: CaptchaProvider.POW
         CaptchaConfig(
-            provider = provider,
             siteKey = params["siteKey"].orEmpty().trim(),
             // An empty field keeps the stored secret, like passwords
             secretKey = params["secretKey"].orEmpty().trim().ifEmpty { existing?.captcha?.secretKey.orEmpty() },
             recaptchaVersion = RecaptchaVersion.entries.firstOrNull { it.name == params["recaptchaVersion"] } ?: RecaptchaVersion.V2,
             recaptchaScore = params["recaptchaScore"]?.trim()?.replace(',', '.')?.toDoubleOrNull() ?: run { problems += "The score must be a number like 0.5"; 0.5 },
-            sessionDuration = parseDuration("Captcha valid for", params["captchaDuration"], problems) ?: CaptchaConfig(provider).sessionDuration,
+            sessionDuration = parseDuration("Captcha valid for", params["captchaDuration"], problems) ?: CaptchaConfig().sessionDuration,
             protectedPaths = params["captchaPaths"].orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() },
             exceptions = exceptionsFromText(params["captchaExceptions"], problems),
-            powDifficulty = params["powDifficulty"]?.trim()?.toIntOrNull() ?: run { problems += "The difficulty must be a number"; DEFAULT_POW_DIFFICULTY },
         )
     } else null
-    val oidc = if (params["oidcEnabled"] != null) AppOidcConfig(lines(params["oidcSubjects"])) else null
 
     val profile = AccessProfile(
         name = params["name"].orEmpty().trim(),
@@ -299,7 +290,6 @@ private suspend fun profileFromForm(params: Parameters, existing: AccessProfile?
         },
         basicAuth = basicAuth,
         captcha = captcha,
-        oidc = oidc,
     )
     // bcrypt costs about a second per user, so only for a form that can be saved
     if (problems.isNotEmpty() || pendingPasswords.isEmpty()) return profile to problems
@@ -421,19 +411,14 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                 fieldSet {
                     legend { +"Captcha" }
                     val captcha = profile.captcha
-                    checkField("Ask for a captcha", "captchaEnabled", captcha != null, "visitors see a check page with 403 until they pass it, only on sites that are reachable over HTTPS alone")
-                    selectField("Kind", "captchaProvider", (captcha?.provider ?: CaptchaProvider.POW).name, listOf(
-                        "POW" to "Own proof of work (no third party, the browser calculates a few seconds)",
-                        "GOOGLE" to "Google reCAPTCHA (sends visitor data to Google)",
-                    ))
-                    textField("Valid for", "captchaDuration", (captcha?.sessionDuration ?: CaptchaConfig(CaptchaProvider.POW).sessionDuration).toString(), required = false,
+                    checkField("Ask for a Google reCAPTCHA", "captchaEnabled", captcha != null,
+                        "visitors see a check page with 403 until they pass it, only on sites that are reachable over HTTPS alone. This sends visitor data to Google")
+                    textField("Valid for", "captchaDuration", (captcha?.sessionDuration ?: CaptchaConfig().sessionDuration).toString(), required = false,
                         hint = "Then the visitor is asked again. Solved captchas live in memory, a restart asks once more.")
                     textAreaField("Only these paths", "captchaPaths", captcha?.protectedPaths.orEmpty().joinToString("\n"), rows = 2,
                         hint = "Path prefixes, one per line. Empty protects the whole site.")
                     textAreaField("Exceptions", "captchaExceptions", exceptionsText(captcha?.exceptions.orEmpty()), rows = 2,
                         hint = "No captcha for: path /api or cidr 192.168.1.0/24, one per line.")
-                    textField("Proof of work difficulty", "powDifficulty", (captcha?.powDifficulty ?: DEFAULT_POW_DIFFICULTY).toString(), type = InputType.number, required = false,
-                        hint = "Leading zero bits, 8 to 30. Every step up doubles the work. $POW_DIFFICULTY_HINT")
                     div("grid-2") {
                         textField("reCAPTCHA site key", "siteKey", captcha?.siteKey.orEmpty(), required = false)
                         label("field") {
@@ -445,18 +430,6 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                         }
                         selectField("reCAPTCHA version", "recaptchaVersion", (captcha?.recaptchaVersion ?: RecaptchaVersion.V2).name, listOf("V2" to "v2 (checkbox)", "V3" to "v3 (invisible, score)"))
                         textField("Minimum score (v3)", "recaptchaScore", (captcha?.recaptchaScore ?: 0.5).toString(), required = false, hint = "0 to 1, Google suggests 0.5.")
-                    }
-                }
-                fieldSet {
-                    legend { +"OIDC login" }
-                    checkField("Require a login at the OIDC provider", "oidcEnabled", profile.oidc != null,
-                        "needs the app login under Settings and HTTPS on the site, Kovexy passes the user to the app as X-Forwarded-User")
-                    if (kovexy.config.appAuth == null) notice("warn", "The app login is not set up yet. Set it up under Settings first, otherwise this profile cannot be saved with OIDC login.")
-                    textAreaField("Allowed users", "oidcSubjects", profile.oidc?.allowedSubjects.orEmpty().joinToString("\n"), rows = 2,
-                        hint = "sub values of the provider, one per line. Empty lets in everybody the provider lets through.")
-                    val domains = name?.let { n -> kovexy.config.sites.filter { s -> s.access == n || s.locations.any { it.access == n } }.flatMap { it.domains } }.orEmpty()
-                    if (domains.isNotEmpty()) p("muted small") {
-                        +"Register these callback URLs at the provider: ${domains.joinToString(", ") { kovexy.appAuth.callbackUrl(it) }}"
                     }
                 }
                 div("btn-row") { submit("Save profile") }

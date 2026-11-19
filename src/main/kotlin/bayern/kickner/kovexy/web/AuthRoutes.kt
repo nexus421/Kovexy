@@ -38,7 +38,7 @@ import kotlinx.html.FormMethod
 import kotlinx.html.form
 import kotlinx.html.h2
 import kotlinx.html.p
-import kotnexlib.ResultOf2
+import bayern.kickner.kovexy.ResultOf2
 import java.security.MessageDigest
 import java.util.Base64
 import javax.crypto.Mac

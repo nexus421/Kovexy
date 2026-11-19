@@ -44,15 +44,13 @@ fun validateConfig(config: KovexyConfig): List<String> = buildList {
     config.accessProfiles.groupBy { it.name }.filter { it.value.size > 1 }.keys.forEach { add("access profile name \"$it\" is used more than once") }
 
     config.sites.forEachIndexed { i, site -> validateSite("sites[$i]", site, upstreamNames, profileNames) }
-    val oidcProfiles = config.accessProfiles.filter { it.oidc != null }.map { it.name }.toSet()
-    if (oidcProfiles.isNotEmpty() && config.appAuth == null) add("access profiles with oidc (${oidcProfiles.joinToString()}) need appAuth")
-    // Captcha and app login only over HTTPS (decided on 18.11.2026): their cookies are Secure and __Host-
-    val httpsOnlyProfiles = config.accessProfiles.filter { it.oidc != null || it.captcha != null }.map { it.name }.toSet()
+    // The captcha only over HTTPS (decided on 18.11.2026): its cookie is Secure and __Host-
+    val httpsOnlyProfiles = config.accessProfiles.filter { it.captcha != null }.map { it.name }.toSet()
     config.sites.forEach { site ->
         val used = (listOfNotNull(site.access) + site.locations.mapNotNull { it.access }).filter { it in httpsOnlyProfiles }
         val httpsOnly = LISTENER_HTTPS in site.listeners && (LISTENER_HTTP !in site.listeners || site.httpsRedirect)
         if (used.isNotEmpty() && httpsOnly.not()) {
-            add("site ${site.domains.firstOrNull()} uses the profile ${used.first()} with captcha or OIDC login, it must only be reachable over HTTPS (https listener, http off or with httpsRedirect)")
+            add("site ${site.domains.firstOrNull()} uses the profile ${used.first()} with a captcha, it must only be reachable over HTTPS (https listener, http off or with httpsRedirect)")
         }
     }
     (config.aiCrawlers.add.map { "aiCrawlers.add" to it } + config.aiCrawlers.ignore.map { "aiCrawlers.ignore" to it }).forEach { (field, entry) ->
@@ -60,12 +58,6 @@ fun validateConfig(config: KovexyConfig): List<String> = buildList {
         if (entry.length > MAX_AI_CRAWLER_ENTRY) add("$field entry \"${entry.take(40)}...\" is longer than $MAX_AI_CRAWLER_ENTRY characters")
     }
     if (config.aiCrawlers.add.size + config.aiCrawlers.ignore.size > 1000) add("aiCrawlers has more than 1000 entries")
-    config.appAuth?.let { auth ->
-        checkAbsoluteUrl("appAuth.issuer", auth.issuer)?.let(::add)
-        if (auth.clientId.isBlank()) add("appAuth.clientId must not be blank")
-        if (auth.clientSecret.isBlank()) add("appAuth.clientSecret must not be blank")
-        if ("openid" !in auth.scopes) add("appAuth.scopes must contain \"openid\"")
-    }
     if (config.incus.enabled) {
         if (rootCheck().not()) add("incus.enabled needs Kovexy to run as root, the Incus socket gives root access to the host")
         if (config.incus.projects.isEmpty()) add("incus.projects must name at least one project")
@@ -264,9 +256,8 @@ private fun MutableList<String>.validateProfile(owner: String, profile: AccessPr
     traps.paths.forEach { if (it.startsWith("/").not()) add("$where.trapPaths.paths \"$it\" must start with /") }
     if (traps.banDuration < 1.minutes) add("$where.trapPaths.banDuration must be at least 1m")
     profile.captcha?.let { c ->
-        if (c.provider == CaptchaProvider.GOOGLE && (c.siteKey.isBlank() || c.secretKey.isBlank())) add("$where.captcha with google needs siteKey and secretKey")
+        if (c.siteKey.isBlank() || c.secretKey.isBlank()) add("$where.captcha needs siteKey and secretKey")
         if (c.recaptchaScore !in 0.0..1.0) add("$where.captcha.recaptchaScore must be between 0 and 1")
-        if (c.powDifficulty !in 8..30) add("$where.captcha.powDifficulty must be between 8 and 30")
         if (c.sessionDuration < 1.minutes || c.sessionDuration > 30.days) add("$where.captcha.sessionDuration must be between 1m and 30d")
         c.protectedPaths.forEach { if (it.startsWith("/").not()) add("$where.captcha.protectedPaths \"$it\" must start with /") }
         c.exceptions.forEach { e ->

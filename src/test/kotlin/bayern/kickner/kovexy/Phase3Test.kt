@@ -2,20 +2,14 @@ package bayern.kickner.kovexy
 
 import bayern.kickner.kovexy.access.CaptchaService
 import bayern.kickner.kovexy.access.GoogleVerifier
-import bayern.kickner.kovexy.access.ProofOfWork
 import bayern.kickner.kovexy.access.Signer
-import bayern.kickner.kovexy.access.leadingZeroBits
 import bayern.kickner.kovexy.access.safeReturnPath
 import bayern.kickner.kovexy.audit.configDiff
-import bayern.kickner.kovexy.config.AppAuthConfig
 import bayern.kickner.kovexy.config.CaptchaConfig
-import bayern.kickner.kovexy.config.CaptchaProvider
 import bayern.kickner.kovexy.config.KovexyConfig
 import bayern.kickner.kovexy.config.RecaptchaVersion
 import bayern.kickner.kovexy.config.rootCheck
 import bayern.kickner.kovexy.config.validateConfig
-import bayern.kickner.kovexy.dev.MockOidcProvider
-import bayern.kickner.kovexy.dev.MockUser
 import bayern.kickner.kovexy.incus.IncusDecision
 import bayern.kickner.kovexy.incus.incusTarget
 import bayern.kickner.kovexy.incus.IncusState
@@ -51,9 +45,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.net.InetSocketAddress
-import java.net.URLEncoder
 import java.nio.file.Files
-import java.security.MessageDigest
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -67,46 +59,15 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Solves a proof of work task like the browser script does. */
-fun solvePow(task: String, difficulty: Int): String {
-    val digest = MessageDigest.getInstance("SHA-256")
-    var nonce = 0L
-    while (leadingZeroBits(digest.digest("$task:$nonce".toByteArray())) < difficulty) nonce++
-    return nonce.toString()
-}
-
-private fun form(vararg pairs: Pair<String, String>) = pairs.joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, Charsets.UTF_8)}" }.toByteArray()
-
-private val formHeader = "Content-Type" to "application/x-www-form-urlencoded"
-
 /** Captcha building blocks without a server. */
 class CaptchaUnitTest {
     @Test
-    fun proofOfWorkIsCheckedOnceAndOnlyWithEnoughWork() {
-        var now = 1_000_000L
-        val pow = ProofOfWork(Signer()) { now }
-        val task = pow.task(10)
-        val nonce = solvePow(task, 10)
-        assertFalse(pow.verify(task, nonce, 12), "A task easier than the profile asks for does not count")
-        val failing = generateSequence(0L) { it + 1 }.first { leadingZeroBits(MessageDigest.getInstance("SHA-256").digest("$task:$it".toByteArray())) < 10 }
-        assertFalse(pow.verify(task, failing.toString(), 10), "Not enough zero bits")
-        assertTrue(pow.verify(task, nonce, 10))
-        assertFalse(pow.verify(task, nonce, 10), "Every task counts once")
-        assertFalse(pow.verify(task.dropLast(2) + "xx", nonce, 10), "A changed signature is refused")
-        val old = pow.task(8)
-        val oldNonce = solvePow(old, 8)
-        now += 6 * 60_000
-        assertFalse(pow.verify(old, oldNonce, 8), "Expired after five minutes")
-        assertFalse(pow.verify(pow.task(8), "12a", 8), "Only digits")
-    }
-
-    @Test
     fun captchaPagesRender() {
-        listOf("pow", "recaptcha2", "recaptcha3").forEach { provider ->
-            val html = bayern.kickner.kovexy.site.captchaPage("tok", provider, "task", 10, "site-key")
-            assertTrue(html.contains("kovexy-captcha") && html.contains("/.kovexy/captcha.js"), provider)
+        listOf("recaptcha2", "recaptcha3").forEach { provider ->
+            val html = bayern.kickner.kovexy.site.captchaPage("tok", provider, "site-key")
+            assertTrue(html.contains("kovexy-captcha") && html.contains("/.kovexy/captcha.js") && html.contains("site-key"), provider)
         }
-        assertTrue(bayern.kickner.kovexy.proxy.captchaPolicy(true).contains("https://www.gstatic.com/recaptcha/"))
+        assertTrue(bayern.kickner.kovexy.proxy.CAPTCHA_POLICY.contains("https://www.gstatic.com/recaptcha/"))
     }
 
     @Test
@@ -143,7 +104,7 @@ class CaptchaUnitTest {
         server.start()
         try {
             val verifier = GoogleVerifier("http://127.0.0.1:${server.address.port}/siteverify")
-            val v2 = CaptchaConfig(CaptchaProvider.GOOGLE, "site", "the secret")
+            val v2 = CaptchaConfig("site", "the secret")
             val v3 = v2.copy(recaptchaVersion = RecaptchaVersion.V3, recaptchaScore = 0.5)
             assertTrue(verifier.verify(v2, "token-1", "203.0.113.7"))
             assertTrue(received.last().contains("secret=the+secret") && received.last().contains("response=token-1") && received.last().contains("remoteip=203.0.113.7"), received.last())
@@ -164,16 +125,12 @@ class CaptchaUnitTest {
     @Test
     fun validationOfPhase3Fields() {
         val base = KovexyConfig()
-        val captcha = base.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig(CaptchaProvider.GOOGLE))))
-        assertTrue(validateConfig(captcha).any { it.contains("siteKey") || it.contains("site key") }, validateConfig(captcha).toString())
-        val pow = base.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig(CaptchaProvider.POW, powDifficulty = 40))))
-        assertTrue(validateConfig(pow).isNotEmpty())
+        val captcha = base.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig())))
+        assertTrue(validateConfig(captcha).any { it.contains("siteKey") }, validateConfig(captcha).toString())
         val site = { redirect: Boolean -> bayern.kickner.kovexy.config.SiteConfig(listOf("a.test"), httpsRedirect = redirect, access = "c") }
-        val captchaOnHttp = captcha.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig(CaptchaProvider.POW))), sites = listOf(site(false)))
+        val captchaOnHttp = captcha.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig("k", "s"))), sites = listOf(site(false)))
         assertTrue(validateConfig(captchaOnHttp).any { it.contains("only be reachable over HTTPS") }, validateConfig(captchaOnHttp).toString())
         assertTrue(validateConfig(captchaOnHttp.copy(sites = listOf(site(true)))).none { it.contains("HTTPS") }, "With the redirect the site is HTTPS only")
-        val oidcWithoutApp = base.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("o", oidc = bayern.kickner.kovexy.config.AppOidcConfig())))
-        assertTrue(validateConfig(oidcWithoutApp).any { it.contains("appAuth") }, validateConfig(oidcWithoutApp).toString())
         val before = rootCheck
         try {
             rootCheck = { false }
@@ -189,201 +146,18 @@ class CaptchaUnitTest {
 
     @Test
     fun secretsOfPhase3StayOutOfTheAuditLog() {
+        val admin = bayern.kickner.kovexy.config.AdminConfig()
         val old = KovexyConfig(
-            appAuth = AppAuthConfig("http://localhost:1", "id", "old-app-secret"),
-            accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig(CaptchaProvider.GOOGLE, "site", "old-google-secret"))),
+            admin = admin.copy(oidc = bayern.kickner.kovexy.config.OidcConfig(issuer = "http://localhost:1", clientId = "id", clientSecret = "old-admin-secret")),
+            accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig("site", "old-google-secret"))),
         )
         val new = old.copy(
-            appAuth = old.appAuth!!.copy(clientSecret = "new-app-secret"),
+            admin = old.admin.copy(oidc = old.admin.oidc!!.copy(clientSecret = "new-admin-secret")),
             accessProfiles = listOf(old.accessProfiles.first().copy(captcha = old.accessProfiles.first().captcha!!.copy(secretKey = "new-google-secret"))),
         )
         val diff = configDiff(old, new)
-        listOf("old-app-secret", "new-app-secret", "old-google-secret", "new-google-secret").forEach { assertFalse(diff.contains(it), "No secret in the diff: $diff") }
-        assertTrue(diff.contains("appAuth.clientSecret") && diff.contains("reCAPTCHA secret key in profile c"), diff)
-    }
-}
-
-/** App sessions: memory first, SQLite for restarts. */
-class AppSessionTest {
-    @Test
-    fun sessionsSurviveARestartAndUnknownTokensNeverHitTheDatabase(): Unit = runBlocking {
-        val dir = Files.createTempDirectory("kovexy-app").toFile()
-        val storage = Storage(File(dir, "kovexy.db"))
-        var now = 1_000_000L
-        val first = bayern.kickner.kovexy.access.AppAuthService(storage, { now })
-        val token = first.createSession("a.test", bayern.kickner.kovexy.auth.IdTokenClaims("ada", "Ada", "ada@x.test", "ada"))
-        assertEquals("ada", first.user(token, "a.test")?.forwardedUser)
-        assertNull(first.user(token, "b.test"), "Per domain")
-        assertNull(first.user("random", "a.test"))
-        val second = bayern.kickner.kovexy.access.AppAuthService(storage, { now })
-        assertEquals("ada@x.test", second.user(token, "a.test")?.email, "A restart keeps the session")
-        now += bayern.kickner.kovexy.access.APP_SESSION_IDLE_MILLIS + 1
-        assertNull(second.user(token, "a.test"), "Idle too long")
-        val other = second.createSession("a.test", bayern.kickner.kovexy.auth.IdTokenClaims("bob", "Bob"))
-        second.remove(other)
-        assertNull(second.user(other, "a.test"), "Logged out at once")
-        dir.deleteRecursively()
-    }
-}
-
-/** Captcha and app login through the proxy. */
-class AccessPhase3Test {
-    private fun captchaConfig(backend: Int) = """
-        { "admin": { "port": ADMIN_PORT },
-          "accessProfiles": [
-            { "name": "pow", "captcha": { "provider": "pow", "powDifficulty": 10, "exceptions": [ { "pathPrefix": "/public" } ] } },
-            { "name": "ai", "exploitFilter": { "aiBots": true }, "captcha": { "provider": "pow", "powDifficulty": 8 } },
-            { "name": "limited", "rateLimit": { "requestsPerSecond": 2 }, "captcha": { "provider": "pow", "powDifficulty": 8 } }
-          ],
-          "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$backend" } ] } ],
-          "sites": [
-            { "domains": ["a.test"], "access": "pow", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
-            { "domains": ["b.test"], "access": "ai", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
-            { "domains": ["c.test"], "listeners": ["https"], "access": "limited", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] }
-          ] }
-    """.trimIndent()
-
-    /** The captcha only runs over HTTPS (decided on 18.11.2026). */
-    private fun tlsRequest(h: Harness, host: String, path: String, method: String = "GET", headers: List<Pair<String, String>> = emptyList(), body: ByteArray? = null) =
-        rawRequest(h.ports.https, host, path, tls = true, method = method, headers = headers, body = body)
-
-    private fun attr(html: String, name: String) = Regex("""$name="([^"]*)"""").find(html)?.groupValues?.get(1)
-    private fun hidden(html: String, name: String) = Regex("""name="$name" value="([^"]*)"""").find(html)?.groupValues?.get(1)
-        ?: Regex("""value="([^"]*)" name="$name"""").find(html)?.groupValues?.get(1)
-
-    @Test
-    fun proofOfWorkCaptchaEndToEnd(): Unit = runBlocking {
-        TestBackend().use { backend ->
-            Harness(captchaConfig(backend.port)).use { h ->
-                val first = tlsRequest(h, "a.test", "/page?x=1")
-                assertEquals(403, first.status)
-                assertTrue(first.text.contains("/.kovexy/captcha.js"), first.text)
-                val csp = first.header("Content-Security-Policy").orEmpty()
-                assertTrue(csp.contains("script-src 'self';") && csp.contains("google").not(), csp)
-                assertEquals(200, tlsRequest(h, "a.test", "/public/file").status, "Exceptions need no captcha")
-                val script = tlsRequest(h, "a.test", "/.kovexy/captcha.js")
-                assertEquals(200, script.status)
-                assertTrue(script.text.contains("sha256Head"))
-
-                val task = attr(first.text, "data-task")!!
-                val token = hidden(first.text, "token")!!
-                val wrong = tlsRequest(h, "a.test", "/.kovexy/captcha/verify", method = "POST", headers = listOf(formHeader),
-                    body = form("token" to token, "task" to task, "nonce" to "1"))
-                assertEquals(403, wrong.status, "A wrong answer shows the page again")
-                val solved = tlsRequest(h, "a.test", "/.kovexy/captcha/verify", method = "POST", headers = listOf(formHeader),
-                    body = form("token" to token, "task" to task, "nonce" to solvePow(task, 10)))
-                assertEquals(302, solved.status, solved.text)
-                assertEquals("/page?x=1", solved.header("Location"))
-                val cookie = solved.headerAll("Set-Cookie").first { it.startsWith("__Host-kovexy-captcha=") }
-                assertTrue(cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax") && cookie.contains("Secure"), cookie)
-                val pass = tlsRequest(h, "a.test", "/page?x=1", headers = listOf("Cookie" to cookie.substringBefore(';')))
-                assertEquals(200, pass.status)
-                assertTrue(pass.text.contains("uri=/page?x=1"))
-                assertFalse(pass.text.contains("kovexy-captcha="), "The captcha cookie does not reach the upstream")
-                assertEquals(403, tlsRequest(h, "b.test", "/", headers = listOf("Cookie" to cookie.substringBefore(';'), "User-Agent" to "GPTBot/1.1")).status,
-                    "A session counts for its profile and domain only")
-                val replay = tlsRequest(h, "a.test", "/.kovexy/captcha/verify", method = "POST", headers = listOf(formHeader),
-                    body = form("token" to token, "task" to task, "nonce" to solvePow(task, 10)))
-                assertEquals(403, replay.status, "A solved task cannot be used twice")
-                val huge = tlsRequest(h, "a.test", "/.kovexy/captcha/verify", method = "POST", headers = listOf(formHeader),
-                    body = form("token" to token, "task" to task, "nonce" to "1", "pad" to "x".repeat(40_000)))
-                assertEquals(400, huge.status, "A form above the limit is not read into memory and counts as empty")
-                val upstreamLog = tlsRequest(h, "a.test", "/.kovexy/anything")
-                assertEquals(404, upstreamLog.status, "Reserved paths never reach the upstream")
-                assertEquals(404, tlsRequest(h, "a.test", "/%2Ekovexy/anything", headers = listOf("Cookie" to cookie.substringBefore(';'))).status,
-                    "Also not with an encoded dot")
-            }
-        }
-    }
-
-    @Test
-    fun aCrawlerWithASolvedCaptchaIsStillRefused(): Unit = runBlocking {
-        TestBackend().use { backend ->
-            Harness(captchaConfig(backend.port)).use { h ->
-                val page = tlsRequest(h, "b.test", "/")
-                assertEquals(403, page.status)
-                val task = attr(page.text, "data-task")!!
-                val solved = tlsRequest(h, "b.test", "/.kovexy/captcha/verify", method = "POST", headers = listOf(formHeader),
-                    body = form("token" to hidden(page.text, "token")!!, "task" to task, "nonce" to solvePow(task, 8)))
-                val cookie = solved.headerAll("Set-Cookie").first { it.startsWith("__Host-kovexy-captcha=") }.substringBefore(';')
-                assertEquals(200, tlsRequest(h, "b.test", "/", headers = listOf("Cookie" to cookie)).status)
-                val bot = tlsRequest(h, "b.test", "/", headers = listOf("Cookie" to cookie, "User-Agent" to "GPTBot/1.1"))
-                assertEquals(403, bot.status, "The exploit filter has no captcha answer, a solved captcha does not help a crawler")
-                assertFalse(bot.text.contains("data-task"))
-                assertEquals(308, rawRequest(h.ports.http, "a.test", "/.kovexy/captcha.js").status, "Plain HTTP is redirected before the reserved paths")
-            }
-        }
-    }
-
-    @Test
-    fun theRateLimitAlsoCoversKovexyPaths(): Unit = runBlocking {
-        TestBackend().use { backend ->
-            Harness(captchaConfig(backend.port)).use { h ->
-                val statuses = (1..6).map { tlsRequest(h, "c.test", "/.kovexy/captcha.js").status }
-                assertTrue(429 in statuses, statuses.toString())
-            }
-        }
-    }
-
-    @Test
-    fun appLoginInFrontOfASite(): Unit = runBlocking {
-        MockOidcProvider(autoLogin = MockUser("ada-sub", "Ada")).use { oidc ->
-            TestBackend().use { backend ->
-                val config = """
-                    { "admin": { "port": ADMIN_PORT },
-                      "appAuth": { "issuer": "${oidc.issuer}", "clientId": "apps", "clientSecret": "${oidc.clientSecret}" },
-                      "accessProfiles": [ { "name": "login", "oidc": { "allowedSubjects": ["ada-sub"] } }, { "name": "nobody", "oidc": { "allowedSubjects": ["bob"] } } ],
-                      "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] } ],
-                      "sites": [
-                        { "domains": ["app.test"], "access": "login", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
-                        { "domains": ["closed.test"], "access": "nobody", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] }
-                      ] }
-                """.trimIndent()
-                Harness(config).use { h ->
-                    val https = h.ports.https
-                    val forged = listOf("X-Forwarded-User" to "mallory", "X-Forwarded-Email" to "m@evil.test")
-                    val first = rawRequest(https, "app.test", "/inside?q=1", tls = true, headers = forged)
-                    assertEquals(302, first.status, first.text)
-                    assertEquals("/.kovexy/auth/start?rd=%2Finside%3Fq%3D1", first.header("Location"))
-                    assertEquals(401, rawRequest(https, "app.test", "/api", tls = true, method = "POST", body = ByteArray(1)).status, "Only GET is redirected to the login")
-
-                    val session = appLogin(https, "app.test", "/inside?q=1")
-                    val inside = rawRequest(https, "app.test", "/inside?q=1", tls = true, headers = forged + ("Cookie" to session))
-                    assertEquals(200, inside.status, inside.text)
-                    assertTrue(inside.text.contains("x-forwarded-user=ada-sub"), inside.text)
-                    assertFalse(inside.text.contains("mallory") || inside.text.contains("m@evil.test"), "Headers sent by the visitor are dropped")
-                    assertFalse(inside.text.contains("__Host-kovexy-auth"), "The login cookie does not reach the upstream")
-
-                    // Not an allowed user: the callback refuses and creates no session at all (audit run-2)
-                    appLogin(https, "closed.test", "/", expectStatus = 403)
-                    assertEquals(302, rawRequest(https, "closed.test", "/", tls = true, headers = listOf("Cookie" to session)).status, "A session counts for its domain only")
-
-                    val logout = rawRequest(https, "app.test", "/.kovexy/auth/logout", tls = true, headers = listOf("Cookie" to session))
-                    assertTrue(logout.status in listOf(200, 302), logout.text)
-                    assertEquals(302, rawRequest(https, "app.test", "/inside", tls = true, headers = listOf("Cookie" to session)).status, "Logged out")
-
-                    assertEquals(400, rawRequest(h.ports.http, "app.test", "/.kovexy/auth/start").status.let { if (it == 308 || it == 301) 400 else it },
-                        "The login needs HTTPS")
-                }
-            }
-        }
-    }
-
-    /** Runs the app login and returns the session cookie, empty when the callback did not log in. */
-    private fun appLogin(port: Int, host: String, returnTo: String, expectStatus: Int = 302): String {
-        val start = rawRequest(port, host, "/.kovexy/auth/start?rd=" + URLEncoder.encode(returnTo, Charsets.UTF_8), tls = true)
-        assertEquals(302, start.status, start.text)
-        val cookies = start.headerAll("Set-Cookie").map { it.substringBefore(';') }.joinToString("; ")
-        val authorize = java.net.URI(start.header("Location")!!)
-        val provider = rawRequest(authorize.port, "localhost:${authorize.port}", authorize.rawPath + "?" + authorize.rawQuery)
-        assertEquals(302, provider.status)
-        val callback = java.net.URI(provider.header("Location")!!)
-        assertEquals(host, callback.host, "The callback goes to the protected domain")
-        val back = rawRequest(port, host, callback.rawPath + "?" + callback.rawQuery, tls = true, headers = listOf("Cookie" to cookies))
-        assertEquals(expectStatus, back.status, back.text)
-        if (expectStatus != 302) return ""
-        assertEquals(returnTo, back.header("Location"))
-        return back.headerAll("Set-Cookie").first { it.startsWith("__Host-kovexy-auth=") && it.contains("Max-Age=0").not() }.substringBefore(';')
+        listOf("old-admin-secret", "new-admin-secret", "old-google-secret", "new-google-secret").forEach { assertFalse(diff.contains(it), "No secret in the diff: $diff") }
+        assertTrue(diff.contains("admin.oidc.clientSecret") && diff.contains("reCAPTCHA secret key in profile c"), diff)
     }
 }
 

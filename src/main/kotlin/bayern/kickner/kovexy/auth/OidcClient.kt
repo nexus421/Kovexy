@@ -10,7 +10,7 @@ import bayern.kickner.klogger.infoLog
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotnexlib.ResultOf2
+import bayern.kickner.kovexy.ResultOf2
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient

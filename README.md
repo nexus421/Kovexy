@@ -17,7 +17,7 @@ Kovexy runs as a single fat JAR with systemd, no Docker. It takes its ideas from
 - Static files, redirects, blocked paths and a default site for unknown domains.
 - Request and response headers per location, with a template for security headers.
 - Access profiles: IP and country rules, exploit filter, AI crawlers, trap paths with automatic bans, rate limit,
-  allowed methods, captcha (own proof of work or reCAPTCHA), OIDC login in front of apps, Basic Auth.
+  allowed methods, Google reCAPTCHA, Basic Auth.
 - Incus discovery: containers with `user.kovexy.*` keys go live after one click.
 - Admin login with password, OIDC or both, audit log and security events.
 - Admin UI with live status, statistics as charts with percentiles and top lists, access log, light and dark mode.
@@ -25,7 +25,7 @@ Kovexy runs as a single fat JAR with systemd, no Docker. It takes its ideas from
 
 ## Status
 
-All three phases are implemented: core, protection, and captcha, OIDC for apps, Incus discovery and extended
+All three phases are implemented: core, protection, and captcha, Incus discovery and extended
 statistics. Not yet run in real operation. As long as only a password protects the admin UI, every page says so.
 
 ## Quick start

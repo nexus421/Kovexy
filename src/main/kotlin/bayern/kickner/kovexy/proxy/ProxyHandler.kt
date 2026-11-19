@@ -3,14 +3,9 @@ package bayern.kickner.kovexy.proxy
 import bayern.kickner.kovexy.config.plainAddress
 import bayern.kickner.kovexy.access.CAPTCHA_COOKIE
 import bayern.kickner.kovexy.access.addressKey
-import bayern.kickner.kovexy.access.APP_RETURN_COOKIE
-import bayern.kickner.kovexy.access.APP_LOGIN_COOKIE
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
-import bayern.kickner.kovexy.access.APP_AUTH_COOKIE
-import bayern.kickner.kovexy.access.APP_USER_HEADERS
 import bayern.kickner.kovexy.access.AccessChecker
-import bayern.kickner.kovexy.access.AppUser
 import bayern.kickner.kovexy.access.Geo
 import bayern.kickner.kovexy.access.AccessRequest
 import bayern.kickner.kovexy.access.AccessResult
@@ -106,7 +101,7 @@ private class Trace(val start: Long, val clientIp: String, val method: String, v
  * 2. Banned addresses (trap paths), for all sites.
  * 3. The site by domain and listener, otherwise the default site.
  * 4. Plain HTTP to HTTPS, if the site wants it.
- * 4b. Kovexy's reserved paths `/.kovexy/` (captcha, app login), never forwarded.
+ * 4b. Kovexy's reserved paths `/.kovexy/` (captcha), never forwarded.
  * 5. The most specific location.
  * 6. The access profile of the location or else of the site. It also runs when no location matches, so a trap
  *    path fires on a site that does not serve that path.
@@ -268,7 +263,7 @@ class ProxyHandler(
                 respondText(call, trace, neutralPage(429, "Too Many Requests", "Too many requests, please try again in a moment."), ContentType.Text.Html, HttpStatusCode.TooManyRequests)
                 return
             }
-            val result = reserved.handle(call, table, site, trace.domain, path, trace.clientIp, https)
+            val result = reserved.handle(call, table, trace.domain, path, trace.clientIp, https)
             trace.status = result.status
             trace.reason = result.reason
             return
@@ -280,7 +275,6 @@ class ProxyHandler(
         // 6. Access profile, the one of the location replaces the one of the site
         val profile = (location?.access ?: site.config.access)?.let { table.profile(it) }
         var basicAuthUser: String? = null
-        var appUser: AppUser? = null
         // Fail closed: a profile that cannot check the address does not let the request through unchecked
         if (profile != null && address == null) {
             trace.reason = "unknown address"
@@ -299,7 +293,6 @@ class ProxyHandler(
                 exactLocation = location?.match == MatchType.EXACT && location.path == path,
                 domain = trace.domain,
                 captchaCookie = call.request.cookies[CAPTCHA_COOKIE],
-                appAuthCookie = call.request.cookies[APP_AUTH_COOKIE],
                 isWebSocket = call.request.headers[HttpHeaders.Upgrade].equals("websocket", ignoreCase = true),
                 foreignInitiated = isForeignInitiated(
                     trace.domain, call.request.headers["Sec-Fetch-Site"], call.request.headers[HttpHeaders.Origin], call.request.headers[HttpHeaders.Referrer],
@@ -309,12 +302,11 @@ class ProxyHandler(
             when (val result = access.check(profile, request)) {
                 is AccessResult.Allow -> {
                     basicAuthUser = result.basicAuthUser
-                    appUser = result.appUser
-                    // A foreign page must not open a WebSocket that Kovexy's own login or captcha cookie lets in (cross-site
+                    // A foreign page must not open a WebSocket that Kovexy's own captcha cookie lets in (cross-site
                     // WebSocket hijacking). Browsers always send Origin with a WebSocket, other clients carry no visitor's
                     // cookies (decided on 19.11.2026)
                     val origin = call.request.headers[HttpHeaders.Origin]
-                    if (request.isWebSocket && (profile.oidc != null || profile.captcha != null) && origin != null && originHost(origin) != trace.domain) {
+                    if (request.isWebSocket && profile.captcha != null && origin != null && originHost(origin) != trace.domain) {
                         location?.let { trace.location = it.path }
                         trace.reason = "websocket from another origin"
                         respondText(call, trace, neutralPage(403, "Forbidden", "Access to this address is not allowed."), ContentType.Text.Html, HttpStatusCode.Forbidden)
@@ -327,18 +319,6 @@ class ProxyHandler(
                     trace.reason = "captcha"
                     trace.status = 403
                     reserved.challenge(call, result.profile, result.config, trace.domain, rawUri)
-                    return
-                }
-
-                AccessResult.LoginRequired -> {
-                    location?.let { trace.location = it.path }
-                    trace.reason = "app login required"
-                    if (call.request.httpMethod == HttpMethod.Get && request.isWebSocket.not()) {
-                        trace.status = 302
-                        call.respondRedirect("/.kovexy/auth/start?rd=" + java.net.URLEncoder.encode(rawUri, Charsets.UTF_8))
-                    } else {
-                        respondText(call, trace, neutralPage(401, "Unauthorized", "This address needs a login."), ContentType.Text.Html, HttpStatusCode.Unauthorized)
-                    }
                     return
                 }
 
@@ -387,7 +367,7 @@ class ProxyHandler(
                     val ownCredential = isKovexyBasicCredential(
                         call.request.headers[HttpHeaders.Authorization], (listOf(site.config.access) + site.config.locations.map { it.access }).map { it?.let(table::profile) },
                     )
-                    forward(call, table, group, location, rawUri, rawPath, path, peer, trace, basicAuthUser != null || ownCredential, appUser)
+                    forward(call, table, group, location, rawUri, rawPath, path, peer, trace, basicAuthUser != null || ownCredential)
                 }
             }
 
@@ -487,7 +467,6 @@ class ProxyHandler(
         peer: String,
         trace: Trace,
         dropAuthorization: Boolean = false,
-        appUser: AppUser? = null,
     ) {
         val stickyIn = if (group.config.stickySession) call.request.cookies[group.stickyCookie] else null
         val server = group.pick(stickyIn)
@@ -510,12 +489,6 @@ class ProxyHandler(
                 call.request.headers[HttpHeaders.Upgrade].equals("websocket", ignoreCase = true)
             val headers = upstreamHeaders(call, table, server, location, peer, trace.clientIp)
             if (dropAuthorization) headers.remove(HttpHeaders.Authorization)
-            // Like oauth2-proxy: the logged in user for the upstream, never taken from the request
-            appUser?.let { user ->
-                headers.set("X-Forwarded-User", user.forwardedUser)
-                if (user.email.isNotEmpty()) headers.set("X-Forwarded-Email", user.email)
-                if (user.preferredUsername.isNotEmpty()) headers.set("X-Forwarded-Preferred-Username", user.preferredUsername)
-            }
             val path = if (location.stripPrefix) stripPrefix(location, rawPath, normalizedPath) else rawPath
             val query = rawUri.substringAfter('?', "").let { if (it.isEmpty()) "" else "?$it" }
             val client = clients().forServer(server.config.skipCertVerify, server.address.host)
@@ -563,8 +536,8 @@ class ProxyHandler(
         // The admin UI published through a site learns the real visitor from Kovexy itself, never from a header a
         // visitor or a local process could set
         if (server.address.port == adminPort() && isLoopbackHost(server.address.host)) headers.set(ADMIN_RELAY_HEADER, "$ADMIN_RELAY_SECRET $clientIp")
-        APP_USER_HEADERS.forEach(headers::remove)
-        // The login and captcha cookies are Kovexy's, an upstream must never see a session it could replay
+        IDENTITY_HEADERS.forEach(headers::remove)
+        // The captcha cookie is Kovexy's, an upstream must never see a session it could replay
         headers.removeCookies(KOVEXY_COOKIES)
         val host = headers["Host"] ?: call.request.local.serverHost.let { h ->
             val port = call.request.local.serverPort
@@ -755,7 +728,7 @@ internal fun refererWithoutQuery(value: String?): String =
     cleanText(value.orEmpty().substringBefore('?').substringBefore('#'), 512).orEmpty()
 
 /** Cookies Kovexy sets on proxied domains, removed before a request goes to an upstream. */
-private val KOVEXY_COOKIES = setOf(APP_AUTH_COOKIE, APP_LOGIN_COOKIE, APP_RETURN_COOKIE, CAPTCHA_COOKIE)
+private val KOVEXY_COOKIES = setOf(CAPTCHA_COOKIE)
 
 /**
  * The error message without the request URL Ktor puts into some messages (`[url=...]`), it may carry a query string

@@ -13,7 +13,6 @@ import bayern.kickner.kovexy.backup.backupFileName
 import bayern.kickner.kovexy.backup.restoreBackup
 import bayern.kickner.kovexy.backup.writeBackup
 import bayern.kickner.kovexy.config.KovexyConfig
-import bayern.kickner.kovexy.config.AppAuthConfig
 import bayern.kickner.kovexy.audit.AuditAction
 import bayern.kickner.kovexy.config.LimitsConfig
 import bayern.kickner.kovexy.config.LoginMode
@@ -128,22 +127,6 @@ fun Route.settingsRoutes(kovexy: Kovexy) {
             if (modeChanged) kovexy.sessions.removeAllExcept(call.attributes[SessionTokenKey])
             return@post call.respondRedirect("/settings?done=settings-saved")
         }
-        call.settingsPage(kovexy, problems, params["version"], params)
-    }
-
-    post("/settings/app-login") {
-        val params = call.receiveForm()
-        val issuer = params["appIssuer"].orEmpty().trim()
-        val existing = kovexy.config.appAuth
-        val appAuth = if (issuer.isEmpty()) null else AppAuthConfig(
-            issuer = issuer,
-            clientId = params["appClientId"].orEmpty().trim(),
-            clientSecret = params["appClientSecret"].orEmpty().ifEmpty { existing?.clientSecret.orEmpty() },
-            scopes = params["appScopes"].orEmpty().split(' ', ',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("openid", "profile", "email") },
-            forceReauth = params["appForceReauth"] != null,
-        )
-        val problems = call.saveConfig(params["version"]) { it.copy(appAuth = appAuth) }
-        if (problems == null) return@post call.respondRedirect("/settings?done=settings-saved")
         call.settingsPage(kovexy, problems, params["version"], params)
     }
 
@@ -274,37 +257,6 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                     passwordField("New password", "new", "new-password", hint = "At least $MIN_PASSWORD_LENGTH characters.")
                     passwordField("Repeat new password", "repeat", "new-password")
                     div("btn-row") { submit("Change password") }
-                }
-            }
-            card("App login (OIDC before sites)") {
-                val app = config.appAuth
-                p("muted small") {
-                    +"Its own client at the provider, separate from the admin login, so the provider can control both groups apart. Access profiles with OIDC login use it. Empty issuer turns it off."
-                }
-                form(action = "/settings/app-login", method = FormMethod.post, classes = "form") {
-                    versionField(version)
-                    textField("Issuer", "appIssuer", v("appIssuer", app?.issuer.orEmpty()), required = false, placeholder = "https://id.example.com")
-                    div("grid-2") {
-                        textField("Client ID", "appClientId", v("appClientId", app?.clientId.orEmpty()), required = false)
-                        label("field") {
-                            span { +"Client secret" }
-                            input(InputType.password, name = "appClientSecret") {
-                                attributes["autocomplete"] = "new-password"
-                                attributes["aria-label"] = "Client secret"
-                                placeholder = if (app?.clientSecret.isNullOrEmpty()) "" else "unchanged"
-                            }
-                        }
-                    }
-                    textField("Scopes", "appScopes", v("appScopes", (app?.scopes ?: listOf("openid", "profile", "email")).joinToString(" ")), required = false)
-                    checkField("Ask for a fresh sign in every time", "appForceReauth", c("appForceReauth", "appIssuer", app?.forceReauth ?: false))
-                    val domains = config.sites.filter { site ->
-                        (listOfNotNull(site.access) + site.locations.mapNotNull { it.access }).any { n -> config.accessProfiles.any { it.name == n && it.oidc != null } }
-                    }.flatMap { it.domains }
-                    p("muted small") {
-                        if (domains.isEmpty()) +"Callback URL to register: https://<domain>/.kovexy/auth/callback for every site that uses OIDC login."
-                        else +"Callback URLs to register: ${domains.joinToString(", ") { kovexy.appAuth.callbackUrl(it) }}"
-                    }
-                    div("btn-row") { submit("Save app login") }
                 }
             }
             card("Sessions") {
