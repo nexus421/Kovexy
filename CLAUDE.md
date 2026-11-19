@@ -11,7 +11,9 @@ concept and the phase specifications live outside the repository in `../kotlin-r
 
 **Start every session with `../kotlin-reverse-proxy/UMSETZUNG.md`**: current state, open points, decisions still to
 be confirmed, next step and working rules (for example: no git until the user says so). Update it at the end of
-every piece of work. Rule of the concept: nothing is implicit, ask instead of deciding. [README.md](README.md)
+every piece of work. Until 1.0.0 is published, breaking changes (config fields, behavior, database) are fine, no
+compatibility code, but every break must be announced (commit message, answer, docs). Rule of the concept: nothing is
+implicit, ask instead of deciding. [README.md](README.md)
 is the short project page, details live in [docs/](docs). Read [docs/security.md](docs/security.md) before changing
 security relevant code (admin guards, login, sessions, config writing, backup restore, static files, header
 handling).
