@@ -2,35 +2,17 @@ package bayern.kickner.kovexy
 
 import bayern.kickner.kovexy.config.ConfigStore
 import bayern.kickner.kovexy.proxy.Ports
-import bayern.kickner.kovexy.tls.CertStore
-import bayern.kickner.kovexy.tls.CertificateBundle
-import bayern.kickner.kovexy.tls.CertificateIssuer
-import bayern.kickner.kovexy.tls.ChallengeStore
-import bayern.kickner.kovexy.tls.newEcKeyPair
-import bayern.kickner.kovexy.tls.selfSigned
-import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.call
-import io.ktor.server.application.install
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.EmbeddedServer
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.request.httpMethod
-import io.ktor.server.request.receiveChannel
-import io.ktor.server.request.uri
-import io.ktor.server.response.respond
-import io.ktor.server.response.respondBytesWriter
-import io.ktor.server.response.respondText
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
-import io.ktor.server.routing.route
-import io.ktor.server.routing.routing
-import io.ktor.server.websocket.WebSockets
-import io.ktor.server.websocket.webSocket
-import io.ktor.utils.io.readAvailable
-import io.ktor.utils.io.writeFully
-import io.ktor.websocket.Frame
-import io.ktor.websocket.readText
+import bayern.kickner.kovexy.tls.*
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.cio.*
+import io.ktor.server.engine.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+import io.ktor.server.websocket.*
+import io.ktor.utils.io.*
+import io.ktor.websocket.*
 import kotlinx.coroutines.delay
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -40,12 +22,8 @@ import java.net.Socket
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.security.cert.X509Certificate
-import java.util.HexFormat
-import javax.net.ssl.SNIHostName
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocket
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
+import java.util.*
+import javax.net.ssl.*
 import kotlin.time.Duration.Companion.seconds
 
 /** A free TCP port on loopback. */
@@ -256,10 +234,19 @@ class Harness(config: String, val issuer: FakeIssuer = FakeIssuer(), clock: () -
     /** Writes a new config file by hand and waits until Kovexy applied or rejected it. */
     suspend fun writeConfigByHand(text: String, expectApplied: Boolean = true) {
         val before = store.current.version
+        val changesBefore =
+            kovexy.audit.latest(bayern.kickner.kovexy.audit.AuditAction.CONFIG_CHANGED, limit = 100_000).size
         File(dataDir, "kovexy.json").writeText(text.replace("ADMIN_PORT", adminPort.toString()))
         if (expectApplied) {
             repeat(100) {
-                if (store.current.version != before) return
+                // The store publishes the new version before its listeners run. The audit entry is the last step of
+                // `Kovexy.apply`, so it proves the new OIDC client, limits and routing are in place (no race in tests).
+                if (store.current.version != before &&
+                    kovexy.audit.latest(
+                        bayern.kickner.kovexy.audit.AuditAction.CONFIG_CHANGED,
+                        limit = 100_000
+                    ).size > changesBefore
+                ) return
                 delay(50)
             }
             error("Config was not applied")

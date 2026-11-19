@@ -30,7 +30,10 @@ unused domains removed, Basic Auth passwords of any length with hint, AI crawler
 ### ACME with Pebble
 
 `PebbleAcmeTest` issues a real certificate through HTTP-01 against [Pebble](https://github.com/letsencrypt/pebble),
-never against Let's Encrypt. Without Pebble it is skipped.
+never against Let's Encrypt. Without Pebble it is skipped. CI installs it
+(`go install ...pebble/v2/cmd/pebble@<version>`,
+pinned in `.github/workflows/build.yml`) and maps `kovexy.localhost` to 127.0.0.1 in `/etc/hosts`. Take care that
+`pebble` is the ACME test server and not Canonical's service manager of the same name.
 
 ```bash
 KOVEXY_PEBBLE=/path/to/pebble ./gradlew test --tests '*PebbleAcmeTest*'

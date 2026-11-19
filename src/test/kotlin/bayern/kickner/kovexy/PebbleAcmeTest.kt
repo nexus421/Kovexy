@@ -1,11 +1,6 @@
 package bayern.kickner.kovexy
 
-import bayern.kickner.kovexy.tls.Acme4jIssuer
-import bayern.kickner.kovexy.tls.CertStore
-import bayern.kickner.kovexy.tls.newEcKeyPair
-import bayern.kickner.kovexy.tls.privateKeyPem
-import bayern.kickner.kovexy.tls.selfSigned
-import bayern.kickner.kovexy.tls.toPem
+import bayern.kickner.kovexy.tls.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -60,9 +55,23 @@ class PebbleAcmeTest {
             .apply { environment()["PEBBLE_VA_NOSLEEP"] = "1"; environment()["PEBBLE_WFE_NONCEREJECT"] = "0" }
             .start()
         try {
-            repeat(100) {
-                if (runCatching { Socket("127.0.0.1", acmePort).close() }.isSuccess) return@repeat
+            var listening = false
+            for (attempt in 0 until 100) {
+                if (runCatching { Socket("127.0.0.1", acmePort).close() }.isSuccess) {
+                    listening = true
+                    break
+                }
                 delay(100)
+            }
+            // A wrong binary fails here with its own output, not later with a bare network error. Canonical's Pebble
+            // (a service manager, `/usr/bin/pebble` on some distributions) has the same name.
+            check(listening) {
+                "Pebble does not listen on port $acmePort. Is it the ACME test server from letsencrypt/pebble? Output: ${
+                    File(
+                        work,
+                        "pebble.log"
+                    ).readText().take(500)
+                }"
             }
             val issuer = Acme4jIssuer(CertStore(File(work, "certs")), harness.kovexy.challenges) { "" }
             val bundle = issuer.issue(domain, "https://127.0.0.1:$acmePort/dir")

@@ -22,6 +22,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
           dependency-graph: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && 'generate-and-submit' || 'disabled' }}
+      # ACME test server for PebbleAcmeTest, Go is part of the runner image. Pinned to a version, like the actions.
+      # Pebble validates HTTP-01 against the domain, so it must resolve to 127.0.0.1.
+      - name: Install Pebble
+        run: |
+          go install github.com/letsencrypt/pebble/v2/cmd/pebble@v2.10.3
+          echo "KOVEXY_PEBBLE=$(go env GOPATH)/bin/pebble" >> "$GITHUB_ENV"
+          echo "127.0.0.1 kovexy.localhost" | sudo tee -a /etc/hosts
       - run: ./gradlew build shadowJar
       - name: Check merged SLF4J service file
         run: test "$(unzip -p build/libs/kovexy.jar META-INF/services/org.slf4j.spi.SLF4JServiceProvider)" = "bayern.kickner.klogger.slf4j.KloggerServiceProvider"
