@@ -68,6 +68,12 @@ class RoutingTable(val config: KovexyConfig) {
     /** The site for [domain], `null` if none serves it. */
     fun site(domain: String): CompiledSite? = byDomain[domain]
 
+    /** The access profile that applies to [path] on [domain], `null` without a site or a profile. [path] is already normalized. */
+    fun profileFor(domain: String, path: String): AccessProfile? {
+        val site = byDomain[domain] ?: return null
+        return (site.locationFor(path)?.access ?: site.config.access)?.let { profiles[it] }
+    }
+
     /** Whether an enabled site serves [domain]. */
     fun servesDomain(domain: String): Boolean = domain in byDomain
 

@@ -273,7 +273,7 @@ class AccessChecker(
 
         // 2. Allow lists
         if (profile.allowIps.isNotEmpty() || profile.allowCountries.isNotEmpty()) {
-            val byIp = profile.allowIps.any { cachedCidr(it)?.contains(request.address) == true }
+            val byIp = profile.allowsIp(request.address)
             val byCountry = profile.allowCountries.isNotEmpty() && when (val c = country) {
                 null -> profile.allowIps.isEmpty()
                 else -> c in profile.allowCountries
@@ -296,6 +296,8 @@ class AccessChecker(
         if (traps.enabled && request.exactLocation.not()) traps.paths.firstOrNull { request.path.startsWith(it) }?.let { trap ->
             // A foreign page could make every visitor's browser load a trap path, that only gets refused
             if (request.foreignInitiated) return deny(403, "trap path $trap, not banned (sent for another site)", SecurityEventType.ACCESS_DENIED, request)
+            // An address on the allow list of the profile is never banned (decided on 20.11.2026), the request is still refused
+            if (profile.allowsIp(request.address)) return deny(403, "trap path $trap, not banned (on the allow list)", SecurityEventType.ACCESS_DENIED, request)
             bans.ban(request.address, traps.banDuration, "trap path $trap", request.site)
             return AccessResult.Deny(403, "trap path $trap")
         }
@@ -357,6 +359,12 @@ class AccessChecker(
 }
 
 private val cidrCache = ConcurrentHashMap<String, java.util.Optional<Cidr>>()
+
+/**
+ * Whether [address] is named in [AccessProfile.allowIps]. Only the IP list counts, not the countries and not
+ * `allowLocal`, so an address that is trusted by name can never be banned, wherever it ends up.
+ */
+fun AccessProfile.allowsIp(address: InetAddress): Boolean = allowIps.any { cachedCidr(it)?.contains(address) == true }
 
 /** [Cidr.parse] with a cache, profiles are checked on every request. */
 private fun cachedCidr(text: String): Cidr? {

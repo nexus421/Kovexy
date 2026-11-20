@@ -415,3 +415,10 @@ form:has(select[name=targetType] option[value=deny]:checked) .target-deny { disp
 .gap-top { margin-top: 16px; }
 pre.diff { margin: 0; padding: 8px 10px; background: var(--code); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow: auto; }
 select[multiple] { min-height: 140px; }
+
+/* Country picker: a summary line that opens a filterable checkbox list */
+.country-picker details { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.country-summary { cursor: pointer; overflow-wrap: anywhere; }
+.country-filter { margin: 10px 0 8px; }
+.country-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; max-height: 280px; overflow: auto; }
+.country-list [hidden] { display: none; }

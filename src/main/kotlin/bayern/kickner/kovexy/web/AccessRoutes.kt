@@ -442,21 +442,31 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
     }
 }
 
-/** A multi select of every country. */
-private fun FlowContent.countrySelect(label: String, name: String, selected: List<String>) = label("field") {
+/**
+ * Every country as a checkbox in a scrollable list under a summary of the picked ones. `app.js` adds a filter and keeps the
+ * summary current, without it the list still works.
+ */
+private fun FlowContent.countrySelect(label: String, name: String, selected: List<String>) = div("field") {
     span { +label }
-    select(classes = "countries") {
-        this.name = name
-        multiple = true
-        attributes["size"] = "6"
-        attributes["aria-label"] = label
-        COUNTRIES.forEach { (code, country) ->
-            option {
-                value = code
-                this.selected = code in selected
-                +"$country ($code)"
+    div("country-picker") {
+        attributes["data-country-picker"] = "true"
+        details {
+            summary("country-summary") { +(if (selected.isEmpty()) "None selected" else "${selected.size} selected: ${selected.joinToString(", ")}") }
+            input(type = InputType.search, classes = "country-filter") {
+                attributes["placeholder"] = "Filter countries"
+                attributes["aria-label"] = "Filter $label"
+            }
+            div("country-list") {
+                COUNTRIES.forEach { (code, country) ->
+                    label("check") {
+                        checkBoxInput(name = name) {
+                            value = code
+                            checked = code in selected
+                        }
+                        span { +"$country ($code)" }
+                    }
+                }
             }
         }
     }
-    span("hint") { +"Hold Ctrl or Cmd to pick several." }
 }

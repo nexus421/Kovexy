@@ -38,6 +38,24 @@
     });
   });
 
+  // Country pickers: a filter for the checkbox list and a summary of the picked countries
+  document.querySelectorAll('[data-country-picker]').forEach(function (picker) {
+    const summary = picker.querySelector('summary');
+    const boxes = Array.prototype.slice.call(picker.querySelectorAll('input[type=checkbox]'));
+    const filter = picker.querySelector('input[type=search]');
+    function update() {
+      const codes = boxes.filter(function (box) { return box.checked; }).map(function (box) { return box.value; });
+      summary.textContent = codes.length ? codes.length + ' selected: ' + codes.join(', ') : 'None selected';
+    }
+    boxes.forEach(function (box) { box.addEventListener('change', update); });
+    filter.addEventListener('input', function () {
+      const query = filter.value.trim().toLowerCase();
+      boxes.forEach(function (box) { box.parentElement.hidden = query !== '' && box.parentElement.textContent.toLowerCase().indexOf(query) < 0; });
+    });
+    // Enter in the filter must not save the whole profile
+    filter.addEventListener('keydown', function (event) { if (event.key === 'Enter') event.preventDefault(); });
+  });
+
   // Selects that submit their form on change: <select data-autosubmit>
   document.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
     select.addEventListener('change', function () { if (select.form) select.form.requestSubmit(); });

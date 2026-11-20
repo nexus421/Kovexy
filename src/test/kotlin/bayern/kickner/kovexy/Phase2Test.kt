@@ -182,6 +182,26 @@ class Phase2IntegrationTest {
     }
 
     @Test
+    fun allowListedAddressIsNeverBanned(): Unit = runBlocking {
+        TestBackend().use { backend ->
+            // The profile of the trap names the address: the trap refuses it but bans nobody
+            Harness(config(backend.port, """{ "name": "p", "allowIps": ["127.0.0.1"], "trapPaths": { "enabled": true } }, { "name": "open" }""")).use { h ->
+                assertEquals(403, get(h, "a.test", "/wp-login.php").status, "The trap still refuses the request")
+                assertEquals(0, h.kovexy.bans.list().size, "An address on the allow list is not banned")
+                assertEquals(200, get(h, "a.test", "/x").status)
+            }
+            // A ban from another profile holds everywhere, except where the profile of the site and location names the address
+            Harness(config(backend.port, """{ "name": "p", "trapPaths": { "enabled": true } }, { "name": "open", "allowIps": ["127.0.0.1"] }""")).use { h ->
+                assertEquals(403, get(h, "a.test", "/wp-login.php").status)
+                assertEquals(1, h.kovexy.bans.list().size, "A profile without the address bans it")
+                assertEquals(403, get(h, "a.test", "/x").status, "Still banned where the profile does not name it")
+                assertEquals(403, get(h, "b.test", "/x").status, "Still banned on a site without a profile")
+                assertEquals(200, get(h, "a.test", "/open/x").status, "The profile of this location names the address")
+            }
+        }
+    }
+
+    @Test
     fun trapBansForAllSitesUntilLiftedOrExpired(): Unit = runBlocking {
         var now = System.currentTimeMillis()
         TestBackend().use { backend ->

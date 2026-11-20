@@ -186,13 +186,13 @@ methods, captcha, Basic Auth. A refused visitor sees a neutral page, the reason 
 | `name` | required | Unique |
 | `denyIps` | `[]` | IPs and CIDR ranges that get 403 |
 | `denyCountries` | `[]` | ISO 3166 codes that get 403, only when the country of the IP is known |
-| `allowIps` | `[]` | If this or `allowCountries` is filled, only matching visitors get in |
+| `allowIps` | `[]` | If this or `allowCountries` is filled, only matching visitors get in. An address listed here is never banned by a trap path, and a ban does not stop it on a site and location that use this profile |
 | `allowCountries` | `[]` | Like `allowIps`. An IP whose country is unknown gets in when only countries are listed |
 | `allowLocal` | `false` | Private and loopback addresses get in despite the allow lists |
 | `exploitFilter.commonExploits` | `false` | Patterns of Nginx Proxy Manager against query and user agent |
 | `exploitFilter.aiBots` | `false` | AI crawlers by user agent (list of ai.robots.txt) |
 | `exploitFilter.response` | `"forbidden"` | `"forbidden"` (403), `"notFound"` (404), `"badRequest"` (400), `"drop"` (empty 204, connection closed). There is no captcha answer on purpose: a crawler could solve it |
-| `trapPaths.enabled` | `false` | Bans whoever calls a trap path, for all sites. A request a browser sends for another site is only refused |
+| `trapPaths.enabled` | `false` | Bans whoever calls a trap path, for all sites. A request a browser sends for another site is only refused, and so is one from an address in `allowIps` of the profile |
 | `trapPaths.paths` | 15 typical scanner targets | Path prefixes. A location with `match: "exact"` for exactly that path disarms the trap |
 | `trapPaths.banDuration` | `"1h"` | IPv6 addresses are banned per /64 |
 | `rateLimit.requestsPerSecond` | required if set | Per IP and profile in fixed one second windows, more get 429 |

@@ -31,7 +31,7 @@ UI, every page shows a warning.
 In this order:
 
 1. On port 80 `/.well-known/acme-challenge/` is answered at once.
-2. Banned addresses (from trap paths) get 403, for all sites.
+2. Banned addresses (from trap paths) get 403, for all sites. Except an address that the access profile of this site and location names in `allowIps`.
 3. A `Host` that names another domain than the request's authority gets 400. Then plain HTTP gets `308` to HTTPS, for every host. Port 80 never reaches a site or the default site.
 4. The site is chosen by domain, any other domain goes to the default site. Then Kovexy's own paths under `/.kovexy/` (captcha),
    they never reach an upstream.

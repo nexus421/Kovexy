@@ -10,6 +10,7 @@ import bayern.kickner.kovexy.access.Geo
 import bayern.kickner.kovexy.access.AccessRequest
 import bayern.kickner.kovexy.access.AccessResult
 import bayern.kickner.kovexy.access.BanStore
+import bayern.kickner.kovexy.access.allowsIp
 import bayern.kickner.kovexy.access.isDrop
 import bayern.kickner.kovexy.access.isForeignInitiated
 import bayern.kickner.kovexy.cleanText
@@ -219,7 +220,9 @@ class ProxyHandler(
 
         // 2. Banned addresses
         val address = parseIpLiteral(trace.clientIp)?.let { InetAddress.getByAddress(it) }
-        if (address != null) bans.banOf(address)?.let {
+        // A ban is global, but an address that the profile of this very site and location names in its allow list passes
+        // (decided on 20.11.2026). Without a profile (unknown domain, default site) every ban holds
+        if (address != null) bans.banOf(address)?.takeIf { table.profileFor(trace.domain, normalizePath(rawPath))?.allowsIp(address) != true }?.let {
             trace.reason = "banned"
             respondText(call, trace, neutralPage(403, "Forbidden", "Access to this address is not allowed."), ContentType.Text.Html, HttpStatusCode.Forbidden)
             return
