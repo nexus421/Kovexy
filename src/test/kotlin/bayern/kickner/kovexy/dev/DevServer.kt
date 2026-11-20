@@ -55,7 +55,7 @@ fun main() {
                 { "name": "demo", "servers": [ { "address": "127.0.0.1:${first.port}" }, { "address": "127.0.0.1:${second.port}", "weight": 2 } ] }
               ],
               "sites": [
-                { "domains": ["app.localhost"], "httpsRedirect": false, "access": "demo-protection", "locations": [
+                { "domains": ["app.localhost"], "access": "demo-protection", "locations": [
                   { "path": "/", "target": { "type": "upstream", "upstream": "demo" } },
                   { "path": "/.git", "target": { "type": "deny", "status": 404 } }
                 ] }

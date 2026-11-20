@@ -22,6 +22,7 @@ import bayern.kickner.kovexy.config.LISTENER_HTTP
 import bayern.kickner.kovexy.config.LocationConfig
 import bayern.kickner.kovexy.config.Target
 import bayern.kickner.kovexy.config.domainOfHostHeader
+import bayern.kickner.kovexy.config.isValidHostName
 import bayern.kickner.kovexy.randomToken
 import bayern.kickner.kovexy.notify.EventSink
 import bayern.kickner.kovexy.site.badGatewayPage
@@ -99,8 +100,8 @@ private class Trace(val start: Long, val clientIp: String, val method: String, v
  *
  * 1. ACME challenges on port 80, answered at once.
  * 2. Banned addresses (trap paths), for all sites.
- * 3. The site by domain and listener, otherwise the default site.
- * 4. Plain HTTP to HTTPS, if the site wants it.
+ * 3. Plain HTTP to HTTPS, for every host (HTTPS or nothing). Port 80 never reaches a site.
+ * 4. The site by domain, otherwise the default site.
  * 4b. Kovexy's reserved paths `/.kovexy/` (captcha), never forwarded.
  * 5. The most specific location.
  * 6. The access profile of the location or else of the site. It also runs when no location matches, so a trap
@@ -224,31 +225,21 @@ class ProxyHandler(
             return
         }
 
-        // 3. Site
-        val site = table.site(trace.domain, listener)
+        // 3. HTTPS or nothing: everything on the plain port but ACME gets a redirect, with 308 like Caddy so the method
+        // and body stay. A site or the default site is only served over TLS (decided on 20.11.2026)
+        if (listener == LISTENER_HTTP) {
+            redirectToHttps(call, table, rawUri, trace)
+            return
+        }
+
+        // 4. Site
+        val site = table.site(trace.domain)
         if (site == null) {
-            // A site's domain on a listener the site does not use is no unknown domain: the default site would get a
-            // Host the site's access profile is meant to protect (decided on 19.11.2026)
-            if (table.servesDomain(trace.domain)) {
-                trace.reason = "site not on this listener"
-                respondText(call, trace, notFoundPage(), ContentType.Text.Html, HttpStatusCode.NotFound)
-                return
-            }
             defaultSite(call, table, rawUri, rawPath, peer, trace)
             return
         }
         trace.site = site.name
         trace.logged = site.config.accessLog
-
-        // 4. HTTPS redirect, with 308 like Caddy so the method and body stay
-        if (listener == LISTENER_HTTP && site.config.httpsRedirect && site.hasTls) {
-            val port = httpsPort().let { if (it == 443) "" else ":$it" }
-            call.response.headers.append(HttpHeaders.Location, "https://${trace.domain}$port$rawUri")
-            trace.status = 308
-            trace.reason = "https redirect"
-            call.respond(HttpStatusCode.PermanentRedirect)
-            return
-        }
 
         // 4b. Reserved paths, on the cleaned path so `/%2Ekovexy/` cannot slip past to an upstream
         val https = call.request.local.scheme == "https"
@@ -395,6 +386,30 @@ class ProxyHandler(
                 respondText(call, trace, html, ContentType.Text.Html, HttpStatusCode.fromValue(target.status))
             }
         }
+    }
+
+    /**
+     * Answers a plain HTTP request with `308` to the same URL on HTTPS. Only a host that is a valid domain name or an
+     * IP address is put into `Location`, anything else gets 400, so a crafted `Host` cannot make Kovexy redirect to
+     * another site.
+     */
+    private suspend fun redirectToHttps(call: ApplicationCall, table: RoutingTable, rawUri: String, trace: Trace) {
+        val domain = trace.domain
+        val usable = isValidHostName(domain) || parseIpLiteral(domain.removeSurrounding("[", "]")) != null
+        if (usable.not()) {
+            trace.reason = "bad host"
+            respondText(call, trace, "Bad Request", ContentType.Text.Plain, HttpStatusCode.BadRequest)
+            return
+        }
+        table.site(domain)?.let {
+            trace.site = it.name
+            trace.logged = it.config.accessLog
+        }
+        val port = httpsPort().let { if (it == 443) "" else ":$it" }
+        call.response.headers.append(HttpHeaders.Location, "https://$domain$port$rawUri")
+        trace.status = 308
+        trace.reason = "https redirect"
+        call.respond(HttpStatusCode.PermanentRedirect)
     }
 
     /** The default site for domains no site serves (Zoraxy). */

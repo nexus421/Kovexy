@@ -222,7 +222,7 @@ private fun domainsOf(instance: IncusInstance): List<String> =
 
 /**
  * The config the proxy works with: `kovexy.json` plus one site and one upstream group per live claim. The site
- * listens on both listeners with the HTTPS redirect, like a new site in the admin UI.
+ * is served over HTTPS only (port 80 redirects), like a new site in the admin UI.
  *
  * A container that speaks HTTPS is reached by its IP address, which no public certificate names, so the certificate
  * is not checked. The traffic stays on the Incus bridge of the host.

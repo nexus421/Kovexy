@@ -55,7 +55,7 @@ class GoogleCaptchaTest {
           "sites": [
             { "domains": ["a.test"], "access": "v2", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
             { "domains": ["b.test"], "access": "ai", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
-            { "domains": ["c.test"], "listeners": ["https"], "access": "limited", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
+            { "domains": ["c.test"], "access": "limited", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
             { "domains": ["d.test"], "access": "v3", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] }
           ] }
     """.trimIndent()

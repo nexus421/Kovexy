@@ -31,9 +31,7 @@ class ProxyIntegrationTest {
                 { "path": "/old", "target": { "type": "redirect", "url": "https://new.test/base", "status": 301 } },
                 { "path": "/exact", "match": "exact", "target": { "type": "deny", "status": 410 } }
               ]
-            },
-            { "domains": ["plain.test"], "listeners": ["http"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
-            { "domains": ["noredirect.test"], "httpsRedirect": false, "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] }
+            }
           ],
           "defaultSite": { "type": "notFound" }
         }
@@ -115,13 +113,17 @@ class ProxyIntegrationTest {
     }
 
     @Test
-    fun httpRedirectsToHttpsOnlyWhenWanted(): Unit = run {
+    fun plainHttpOnlyRedirects(): Unit = run {
         val redirect = http("a.test", "/p?q=1")
         assertEquals(308, redirect.status)
         assertEquals("https://a.test:${harness.ports.https}/p?q=1", redirect.header("Location"))
-        assertEquals(200, http("plain.test").status, "A site without TLS listener is served on plain HTTP")
-        assertEquals(200, http("noredirect.test").status)
-        assertEquals(404, https("plain.test").status, "plain.test is not on the TLS listener, the default site answers")
+        assertEquals(308, http("a.test", "/p", method = "POST").status, "308 keeps the method")
+        val unknown = http("unknown.test", "/x")
+        assertEquals(308, unknown.status, "Unknown hosts are redirected too, the default site only answers on HTTPS")
+        assertEquals("https://unknown.test:${harness.ports.https}/x", unknown.header("Location"))
+        assertEquals(400, http("a.test@evil.test", "/").status, "A crafted Host never ends up in Location")
+        assertEquals(400, http("a.test/evil", "/").status)
+        assertEquals(200, https("a.test").status)
     }
 
     @Test

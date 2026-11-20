@@ -39,7 +39,7 @@ class LiveChangeTest {
           "admin": { "port": ADMIN_PORT },
           $extra
           "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] } ],
-          "sites": [ { "domains": ["a.test", "b.test"], "httpsRedirect": false, "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ]
+          "sites": [ { "domains": ["a.test", "b.test"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ]
         }
     """.trimIndent()
 
@@ -108,9 +108,9 @@ class LiveChangeTest {
 
     @Test
     fun webSocketSurvivesIdleAndClosesOnConfigChange(): Unit = runBlocking {
-        val client = HttpClient(CIO) { install(WebSockets) }
+        val client = HttpClient(CIO) { install(WebSockets); engine { https { trustManager = TrustAllManager } } }
         try {
-            val session = client.webSocketSession("ws://127.0.0.1:${harness.ports.http}/ws") { header("Host", "a.test") }
+            val session = client.webSocketSession("wss://127.0.0.1:${harness.ports.https}/ws") { header("Host", "a.test") }
             session.send(Frame.Text("one"))
             assertEquals("echo:one", (withTimeout(5.seconds) { session.incoming.receive() } as Frame.Text).readText())
             // Longer than the client idle timeout of 2 seconds: an upgraded connection must stay open
@@ -133,7 +133,7 @@ class LiveChangeTest {
 
     @Test
     fun refusedWebSocketKeepsTheUpstreamStatus(): Unit = runBlocking {
-        val response = rawRequest(harness.ports.http, "a.test", "/ws-denied", headers = listOf(
+        val response = rawRequest(harness.ports.https, "a.test", "/ws-denied", tls = true, headers = listOf(
             "Upgrade" to "websocket", "Connection" to "Upgrade", "Sec-WebSocket-Version" to "13", "Sec-WebSocket-Key" to "dGhlIHNhbXBsZSBub25jZQ==",
         ))
         assertEquals(403, response.status, "The visitor sees why the upstream refused")

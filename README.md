@@ -12,7 +12,7 @@ Kovexy runs as a single fat JAR with systemd, no Docker. It takes its ideas from
 
 - Routing by domain and path. The most specific location wins, a prefix only matches at path boundaries.
 - One certificate per domain from Let's Encrypt (ACME, HTTP-01), renewed automatically and swapped without restart.
-- HTTP to HTTPS redirect, HTTP/2, WebSockets, streaming of large bodies in both directions.
+- HTTPS or nothing: port 80 only answers ACME challenges and redirects everything else to HTTPS. HTTP/2, WebSockets, streaming of large bodies in both directions.
 - Load balancing with weights, backup servers, sticky sessions, active and passive health checks.
 - Static files, redirects, blocked paths and a default site for unknown domains.
 - Request and response headers per location, with a template for security headers.

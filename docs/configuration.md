@@ -103,9 +103,7 @@ Using ACME means agreeing to the terms of service of the CA, like with Caddy.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `domains` | required | Exact lower case names, no wildcards. A domain may belong to one site only |
-| `listeners` | `["http", "https"]` | |
-| `httpsRedirect` | `true` | Plain HTTP gets `308` to HTTPS, only if the site is on `https` |
+| `domains` | required | Exact lower case names, no wildcards. A domain may belong to one site only. Sites are reachable over HTTPS only, port 80 answers every request except ACME challenges with `308` to HTTPS (there is no per-site switch) |
 | `access` | empty | Name of an access profile for the whole site |
 | `enabled` | `true` | |
 | `accessLog` | `true` | Writes requests to the access log. Statistics count them anyway |
@@ -228,8 +226,7 @@ empty and have at most 200 characters, 1000 entries in all. The Access page edit
 
 #### Captcha
 
-A profile with a captcha may only be used by sites that are reachable over HTTPS only: on the `https` listener, and
-`http` either off or with `httpsRedirect`. The rate limit of the profile also counts requests to Kovexy's own paths
+The captcha works because every site is reachable over HTTPS only (its cookie is `Secure`). The rate limit of the profile also counts requests to Kovexy's own paths
 under `/.kovexy/`. That path belongs to Kovexy on every domain and never reaches an upstream.
 
 The captcha is Google reCAPTCHA, Kovexy has no captcha of its own. A visitor without a valid captcha cookie sees a
@@ -273,7 +270,7 @@ domains, address, port, HTTPS and access profile, a change of any of them needs 
 and the host's own addresses are refused as targets. Only running instances with an address get a route, a stopped one loses it at
 once and gets it back when it starts. A site set up by hand wins over a container with the same domain. Kovexy listens
 to the Incus events and fetches the list again after every instance event and after every reconnect (every 10 s
-while Incus is away). An approved container gets a site on both listeners with the HTTPS redirect and an upstream
+while Incus is away). An approved container gets a site (HTTPS only, port 80 redirects) and an upstream
 group named `incus:<project>/<instance>`, that prefix is reserved.
 
 ### Country data

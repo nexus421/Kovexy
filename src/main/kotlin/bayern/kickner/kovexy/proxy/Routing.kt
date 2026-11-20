@@ -3,7 +3,6 @@ package bayern.kickner.kovexy.proxy
 import bayern.kickner.kovexy.config.AccessProfile
 import bayern.kickner.kovexy.config.Cidr
 import bayern.kickner.kovexy.config.KovexyConfig
-import bayern.kickner.kovexy.config.LISTENER_HTTPS
 import bayern.kickner.kovexy.config.LocationConfig
 import bayern.kickner.kovexy.config.MatchType
 import bayern.kickner.kovexy.config.SiteConfig
@@ -23,9 +22,6 @@ class CompiledSite(val config: SiteConfig) {
     val locations: List<LocationConfig> = config.locations
         .filter { it.enabled }
         .sortedWith(compareByDescending<LocationConfig> { it.path.length }.thenBy { if (it.match == MatchType.EXACT) 0 else 1 })
-
-    /** Whether the site is on the TLS listener. */
-    val hasTls: Boolean = LISTENER_HTTPS in config.listeners
 
     /**
      * The most specific location for [path], like Caddy: longer paths before shorter ones, at equal length exact
@@ -54,14 +50,11 @@ fun matches(location: LocationConfig, path: String): Boolean = when (location.ma
  * @property trustedProxies Parsed [KovexyConfig.trustedProxies].
  */
 class RoutingTable(val config: KovexyConfig) {
-    /** Listener name to domain to site, only enabled sites. */
-    private val byListener: Map<String, Map<String, CompiledSite>> = buildMap<String, MutableMap<String, CompiledSite>> {
+    /** Domain to site, only enabled sites. */
+    private val byDomain: Map<String, CompiledSite> = buildMap {
         config.sites.filter { it.enabled }.forEach { site ->
             val compiled = CompiledSite(site)
-            site.listeners.forEach { listener ->
-                val domains = getOrPut(listener) { mutableMapOf() }
-                site.domains.forEach { domains[it] = compiled }
-            }
+            site.domains.forEach { put(it, compiled) }
         }
     }
 
@@ -72,14 +65,14 @@ class RoutingTable(val config: KovexyConfig) {
     /** The access profile named [name]. */
     fun profile(name: String): AccessProfile? = profiles[name]
 
-    /** The site for [domain] on [listener], `null` if none serves it there. */
-    fun site(domain: String, listener: String): CompiledSite? = byListener[listener]?.get(domain)
+    /** The site for [domain], `null` if none serves it. */
+    fun site(domain: String): CompiledSite? = byDomain[domain]
 
-    /** Whether an enabled site serves [domain] on any listener. */
-    fun servesDomain(domain: String): Boolean = byListener.values.any { domain in it }
+    /** Whether an enabled site serves [domain]. */
+    fun servesDomain(domain: String): Boolean = domain in byDomain
 
-    /** Every domain that needs a certificate: domains of enabled sites on the TLS listener. */
-    fun tlsDomains(): Set<String> = byListener[LISTENER_HTTPS]?.keys.orEmpty()
+    /** Every domain that needs a certificate: domains of enabled sites. */
+    fun tlsDomains(): Set<String> = byDomain.keys
 }
 
 /**

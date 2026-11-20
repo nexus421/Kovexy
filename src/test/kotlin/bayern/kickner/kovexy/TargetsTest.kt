@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 class TargetsTest {
 
     private fun site(target: String, domain: String = "a.test") =
-        """{ "domains": ["$domain"], "httpsRedirect": false, "locations": [ { "path": "/", "target": $target } ] }"""
+        """{ "domains": ["$domain"], "locations": [ { "path": "/", "target": $target } ] }"""
 
     @Test
     fun weightedBackupAndPassiveHealth(): Unit = runBlocking {
@@ -30,15 +30,15 @@ class TargetsTest {
               "sites": [ ${site("""{ "type": "upstream", "upstream": "app" }""")} ] }
         """.trimIndent()
         Harness(config).use { h ->
-            val counts = (1..200).map { rawRequest(h.ports.http, "a.test", "/x").header("X-Backend") }.groupingBy { it }.eachCount()
+            val counts = (1..200).map { h.https("a.test", "/x").header("X-Backend") }.groupingBy { it }.eachCount()
             assertEquals(null, counts["backup"], "A backup server gets nothing while others are up")
             assertTrue((counts["one"] ?: 0) > (counts["two"] ?: 0) * 2, "Weight 3 to 1: $counts")
 
             // Both weighted servers fail: the first failed request marks them down, then the backup answers
             one.close()
             two.close()
-            repeat(6) { runCatching { rawRequest(h.ports.http, "a.test", "/x") } }
-            assertEquals("backup", rawRequest(h.ports.http, "a.test", "/x").header("X-Backend"))
+            repeat(6) { runCatching { h.https("a.test", "/x") } }
+            assertEquals("backup", h.https("a.test", "/x").header("X-Backend"))
             val states = h.kovexy.upstreams.group("app")!!.servers.associate { it.address.port to it.healthy }
             assertEquals(false, states[one.port])
             assertEquals(true, states[backupPort])
@@ -51,10 +51,10 @@ class TargetsTest {
         val port = freePort()
         Harness("""{ "admin": { "port": ADMIN_PORT }, "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$port" } ] } ],
             "sites": [ ${site("""{ "type": "upstream", "upstream": "app" }""")} ] }""").use { h ->
-            assertEquals(502, rawRequest(h.ports.http, "a.test", "/").status)
+            assertEquals(502, h.https("a.test", "/").status)
             val backend = TestBackend(port)
             // Zoraxy: a group with one server always tries it, so the upstream is back at once after a restart
-            assertEquals(200, rawRequest(h.ports.http, "a.test", "/").status)
+            assertEquals(200, h.https("a.test", "/").status)
             backend.close()
         }
     }
@@ -70,12 +70,12 @@ class TargetsTest {
               "sites": [ ${site("""{ "type": "upstream", "upstream": "app" }""")} ] }
         """.trimIndent()
         Harness(config("")).use { h ->
-            val first = rawRequest(h.ports.http, "a.test", "/x")
+            val first = h.https("a.test", "/x")
             val cookie = first.header("Set-Cookie")
             assertNotNull(cookie)
             assertTrue(cookie.contains("HttpOnly") && cookie.contains("Path=/"))
             val value = cookie.substringBefore(';')
-            val sameServer = (1..20).map { rawRequest(h.ports.http, "a.test", "/x", headers = listOf("Cookie" to value)).header("X-Backend") }.toSet()
+            val sameServer = (1..20).map { h.https("a.test", "/x", headers = listOf("Cookie" to value)).header("X-Backend") }.toSet()
             assertEquals(setOf(first.header("X-Backend")), sameServer)
 
             h.writeConfigByHand(config(""" "healthCheck": { "path": "/status/503", "interval": "1s", "expectStatus": 200 }, """))
@@ -85,7 +85,7 @@ class TargetsTest {
                 delay(100)
             }
             assertTrue(h.kovexy.upstreams.group("app")!!.servers.none { it.healthy })
-            assertEquals(502, rawRequest(h.ports.http, "a.test", "/x").status)
+            assertEquals(502, h.https("a.test", "/x").status)
         }
         one.close()
         two.close()
@@ -106,18 +106,18 @@ class TargetsTest {
             ${site("""{ "type": "static", "root": "${root.absolutePath}" }""")},
             ${site("""{ "type": "static", "root": "${root.absolutePath}", "directoryListing": true }""", "list.test")} ] }"""
         Harness(config).use { h ->
-            assertEquals("<h1>home</h1>", rawRequest(h.ports.http, "a.test", "/").text)
-            val file = rawRequest(h.ports.http, "a.test", "/docs/a.txt")
+            assertEquals("<h1>home</h1>", h.https("a.test", "/").text)
+            val file = h.https("a.test", "/docs/a.txt")
             assertEquals("text", file.text)
             assertNotNull(file.header("Last-Modified"))
-            assertEquals(304, rawRequest(h.ports.http, "a.test", "/docs/a.txt", headers = listOf("If-Modified-Since" to file.header("Last-Modified")!!)).status)
-            assertEquals(308, rawRequest(h.ports.http, "a.test", "/docs").status)
-            assertEquals(404, rawRequest(h.ports.http, "a.test", "/docs/").status, "No listing by default")
-            assertEquals(404, rawRequest(h.ports.http, "a.test", "/escape/secret.txt").status, "Symlinks out of the root are refused")
-            assertEquals(404, rawRequest(h.ports.http, "a.test", "/linked/").status, "A symlinked index file is checked like any file")
-            assertEquals(404, rawRequest(h.ports.http, "a.test", "/docs/%2e%2e/%2e%2e/etc/passwd").status.let { if (it == 400) 404 else it })
-            assertEquals(405, rawRequest(h.ports.http, "a.test", "/", method = "POST", body = ByteArray(1)).status)
-            assertTrue(rawRequest(h.ports.http, "list.test", "/docs/").text.contains("a.txt"))
+            assertEquals(304, h.https("a.test", "/docs/a.txt", headers = listOf("If-Modified-Since" to file.header("Last-Modified")!!)).status)
+            assertEquals(308, h.https("a.test", "/docs").status)
+            assertEquals(404, h.https("a.test", "/docs/").status, "No listing by default")
+            assertEquals(404, h.https("a.test", "/escape/secret.txt").status, "Symlinks out of the root are refused")
+            assertEquals(404, h.https("a.test", "/linked/").status, "A symlinked index file is checked like any file")
+            assertEquals(404, h.https("a.test", "/docs/%2e%2e/%2e%2e/etc/passwd").status.let { if (it == 400) 404 else it })
+            assertEquals(405, h.https("a.test", "/", method = "POST", body = ByteArray(1)).status)
+            assertTrue(h.https("list.test", "/docs/").text.contains("a.txt"))
         }
         root.deleteRecursively()
         outside.deleteRecursively()
@@ -126,23 +126,23 @@ class TargetsTest {
     @Test
     fun defaultSiteVariants(): Unit = runBlocking {
         Harness("""{ "admin": { "port": ADMIN_PORT } }""").use { h ->
-            val page = rawRequest(h.ports.http, "unknown.test", "/")
+            val page = h.https("unknown.test", "/")
             assertEquals(200, page.status)
             assertTrue(page.text.contains("It works"))
 
             h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "defaultSite": { "type": "redirect", "url": "https://other.test" } }""")
-            val redirect = rawRequest(h.ports.http, "unknown.test", "/p?q=1")
+            val redirect = h.https("unknown.test", "/p?q=1")
             assertEquals(307, redirect.status)
             assertEquals("https://other.test/p?q=1", redirect.header("Location"))
-            assertEquals(500, rawRequest(h.ports.http, "other.test", "/").status, "A redirect to itself is refused")
+            assertEquals(500, h.https("other.test", "/").status, "A redirect to itself is refused")
 
             h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "defaultSite": { "type": "noResponse" } }""")
-            val empty = rawRequest(h.ports.http, "unknown.test", "/")
+            val empty = h.https("unknown.test", "/")
             assertEquals(204, empty.status, "noResponse is an empty answer, without reflection on Ktor internals")
             assertEquals("close", empty.header("Connection"))
 
             h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "defaultSite": { "type": "notFound" } }""")
-            assertEquals(404, rawRequest(h.ports.http, "unknown.test", "/").status)
+            assertEquals(404, h.https("unknown.test", "/").status)
         }
     }
 
@@ -154,7 +154,8 @@ class TargetsTest {
             assertEquals(200, answer.status)
             assertEquals("token123.key", answer.text)
             assertEquals(404, rawRequest(h.ports.http, "a.test", "/.well-known/acme-challenge/other").status)
-            assertEquals(403, rawRequest(h.ports.http, "a.test", "/").status)
+            assertEquals(308, rawRequest(h.ports.http, "a.test", "/").status, "Everything but ACME is redirected on port 80")
+            assertEquals(403, h.https("a.test", "/").status)
         }
     }
 }

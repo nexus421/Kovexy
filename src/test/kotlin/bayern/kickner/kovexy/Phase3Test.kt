@@ -127,10 +127,8 @@ class CaptchaUnitTest {
         val base = KovexyConfig()
         val captcha = base.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig())))
         assertTrue(validateConfig(captcha).any { it.contains("siteKey") }, validateConfig(captcha).toString())
-        val site = { redirect: Boolean -> bayern.kickner.kovexy.config.SiteConfig(listOf("a.test"), httpsRedirect = redirect, access = "c") }
-        val captchaOnHttp = captcha.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig("k", "s"))), sites = listOf(site(false)))
-        assertTrue(validateConfig(captchaOnHttp).any { it.contains("only be reachable over HTTPS") }, validateConfig(captchaOnHttp).toString())
-        assertTrue(validateConfig(captchaOnHttp.copy(sites = listOf(site(true)))).none { it.contains("HTTPS") }, "With the redirect the site is HTTPS only")
+        val withSite = captcha.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig("k", "s"))), sites = listOf(bayern.kickner.kovexy.config.SiteConfig(listOf("a.test"), access = "c")))
+        assertTrue(validateConfig(withSite).isEmpty(), "Every site is HTTPS only, so a captcha profile is fine on any site: ${validateConfig(withSite)}")
         val before = rootCheck
         try {
             rootCheck = { false }
@@ -210,9 +208,9 @@ class StatisticsPhase3Test {
         assertEquals("127.0.0.1", bayern.kickner.kovexy.config.plainAddress("127.0.0.1"))
         TestBackend().use { backend ->
             val config = """{ "admin": { "port": ADMIN_PORT }, "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] } ],
-                "sites": [ { "domains": ["a.test"], "httpsRedirect": false, "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ] }"""
+                "sites": [ { "domains": ["a.test"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ] }"""
             Harness(config).use { h ->
-                val socket = runCatching { java.net.Socket("::1", h.ports.http) }.getOrNull() ?: return@use
+                val socket = runCatching { trustAllContext.socketFactory.createSocket("::1", h.ports.https) }.getOrNull() ?: return@use
                 socket.use { s ->
                     s.soTimeout = 10_000
                     s.getOutputStream().write("GET / HTTP/1.1\r\nHost: a.test\r\nConnection: close\r\n\r\n".toByteArray())

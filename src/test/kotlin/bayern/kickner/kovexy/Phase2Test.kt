@@ -30,6 +30,7 @@ import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -146,16 +147,16 @@ class Phase2IntegrationTest {
           "accessProfiles": [ $profiles ],
           "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$backend" } ] } ],
           "sites": [
-            { "domains": ["a.test"], "httpsRedirect": false, $siteAccess "locations": [
+            { "domains": ["a.test"], $siteAccess "locations": [
               { "path": "/", "target": { "type": "upstream", "upstream": "app" } },
               { "path": "/open", "access": "open", "target": { "type": "upstream", "upstream": "app" } },
               { "path": "/.env", "match": "exact", "target": { "type": "upstream", "upstream": "app" } } ] },
-            { "domains": ["b.test"], "httpsRedirect": false, "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] }
+            { "domains": ["b.test"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] }
           ] }
     """.trimIndent()
 
     private fun get(h: Harness, host: String, path: String, headers: List<Pair<String, String>> = emptyList(), method: String = "GET") =
-        rawRequest(h.ports.http, host, path, method = method, headers = headers, body = if (method == "POST") ByteArray(1) else null)
+        h.https(host, path, method = method, headers = headers, body = if (method == "POST") ByteArray(1) else null)
 
     @Test
     fun ipListsAndLocationProfileReplacesSiteProfile(): Unit = runBlocking {
@@ -208,7 +209,7 @@ class Phase2IntegrationTest {
     }
 
     @Test
-    fun siteDomainOnItsOtherListenerIsNotTheDefaultSite(): Unit = runBlocking {
+    fun plainHttpNeverReachesASiteOrTheDefaultSite(): Unit = runBlocking {
         TestBackend().use { backend ->
             TestBackend(name = "default").use { fallback ->
                 val config = """
@@ -216,12 +217,17 @@ class Phase2IntegrationTest {
                       "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] },
                                      { "name": "fallback", "servers": [ { "address": "127.0.0.1:${fallback.port}" } ] } ],
                       "defaultSite": { "type": "upstream", "upstream": "fallback" },
-                      "sites": [ { "domains": ["tls.test"], "listeners": ["https"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ] }
+                      "sites": [ { "domains": ["tls.test"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ] }
                 """.trimIndent()
                 Harness(config).use { h ->
-                    val miss = get(h, "tls.test", "/x")
-                    assertEquals(404, miss.status, "A site's domain on a listener the site does not use gets 404")
-                    assertNull(miss.header("X-Backend"), "The default upstream never sees the protected Host")
+                    val site = get(h, "tls.test", "/x")
+                    assertEquals(200, site.status)
+                    assertNotEquals("default", site.header("X-Backend"))
+                    listOf("tls.test", "other.test").forEach { host ->
+                        val plain = rawRequest(h.ports.http, host, "/x")
+                        assertEquals(308, plain.status, "$host on port 80 is only redirected")
+                        assertNull(plain.header("X-Backend"), "No upstream, not even the default one, sees plain HTTP")
+                    }
                     val other = get(h, "other.test", "/x")
                     assertEquals(200, other.status, "Unknown domains still go to the default site")
                     assertEquals("default", other.header("X-Backend"))

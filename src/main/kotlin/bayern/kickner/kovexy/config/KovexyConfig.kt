@@ -262,11 +262,10 @@ data class HealthCheckConfig(
 )
 
 /**
- * A site: one or more domains with their locations.
+ * A site: one or more domains with their locations. Always reachable over HTTPS only, plain HTTP on port 80 is
+ * redirected for every host and never reaches a site.
  *
  * @property domains Exact domain names, e.g. `example.com` and `www.example.com`. Each gets its own certificate.
- * @property listeners Listeners the site is reachable on.
- * @property httpsRedirect Redirects plain HTTP requests to HTTPS. Only when the site is on the TLS listener.
  * @property access Name of an access profile for the whole site.
  * @property locations Path rules. The most specific matching one wins, the order does not matter.
  * @property enabled A disabled site is treated as if it did not exist.
@@ -275,8 +274,6 @@ data class HealthCheckConfig(
 @Serializable
 data class SiteConfig(
     val domains: List<String>,
-    val listeners: List<String> = listOf(LISTENER_HTTP, LISTENER_HTTPS),
-    val httpsRedirect: Boolean = true,
     val access: String? = null,
     val locations: List<LocationConfig> = emptyList(),
     val enabled: Boolean = true,

@@ -3,8 +3,6 @@ package bayern.kickner.kovexy.web
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.config.HeaderAction
 import bayern.kickner.kovexy.config.HeaderRule
-import bayern.kickner.kovexy.config.LISTENER_HTTP
-import bayern.kickner.kovexy.config.LISTENER_HTTPS
 import bayern.kickner.kovexy.config.LocationConfig
 import bayern.kickner.kovexy.config.MatchType
 import bayern.kickner.kovexy.config.SiteConfig
@@ -83,12 +81,11 @@ fun Route.siteRoutes(kovexy: Kovexy) {
                 if (config.sites.isEmpty()) p("muted") { +"No sites yet. Add one to forward a domain to an upstream." }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Domains" }; th { +"Listeners" }; th { +"Locations" }; th { +"State" }; th { } } }
+                        thead { tr { th { +"Domains" }; th { +"Locations" }; th { +"State" }; th { } } }
                         tbody {
                             config.sites.forEachIndexed { i, site ->
                                 tr {
                                     td { attributes["data-label"] = "Domains"; a(href = "/sites/$i") { +site.domains.joinToString(", ") } }
-                                    td { attributes["data-label"] = "Listeners"; +site.listeners.joinToString(", ") }
                                     td { attributes["data-label"] = "Locations"; +site.locations.joinToString(", ") { it.path + " → " + targetLabel(it.target) } }
                                     td { attributes["data-label"] = "State"; if (site.enabled) pill("ok", "enabled") else pill("", "disabled") }
                                     td("actions") { linkButton("/sites/$i", "Edit", "sm") }
@@ -217,11 +214,8 @@ private suspend fun ApplicationCall.locationIndex(kovexy: Kovexy, site: Int): In
 
 private fun siteFromForm(params: Parameters, base: SiteConfig): Pair<SiteConfig, List<String>> {
     val domains = params["domains"].orEmpty().split('\n', ',', ' ').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-    val listeners = listOfNotNull(LISTENER_HTTP.takeIf { params["listenHttp"] != null }, LISTENER_HTTPS.takeIf { params["listenHttps"] != null })
     val site = base.copy(
         domains = domains,
-        listeners = listeners,
-        httpsRedirect = params["httpsRedirect"] != null,
         enabled = params["enabled"] != null,
         accessLog = params["accessLog"] != null,
         access = params["access"]?.takeIf { it.isNotEmpty() },
@@ -233,7 +227,7 @@ private suspend fun ApplicationCall.siteForm(kovexy: Kovexy, index: Int?, site: 
     val version = posted ?: kovexy.configStore.current.version
     val title = if (index == null) "Add site" else site.domains.firstOrNull() ?: "Site"
     page(title, session, Nav.SITES, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
-        pageHeader(title, "Every domain gets its own certificate when the site is on the TLS listener.") {
+        pageHeader(title, "Every domain gets its own certificate. Plain HTTP on port 80 is always redirected to HTTPS.") {
             linkButton("/sites", "All sites", "ghost")
         }
         if (problems.isNotEmpty()) problems("Not saved:", problems)
@@ -241,12 +235,6 @@ private suspend fun ApplicationCall.siteForm(kovexy: Kovexy, index: Int?, site: 
             form(action = if (index == null) "/sites/new" else "/sites/$index", method = FormMethod.post, classes = "form") {
                 versionField(version)
                 textAreaField("Domains", "domains", site.domains.joinToString("\n"), rows = 3, hint = "One per line, exact names like example.com and www.example.com. No wildcards.", required = true)
-                fieldSet {
-                    legend { +"Listeners" }
-                    checkField("HTTP (port 80)", "listenHttp", LISTENER_HTTP in site.listeners)
-                    checkField("HTTPS (port 443)", "listenHttps", LISTENER_HTTPS in site.listeners)
-                    checkField("Redirect HTTP to HTTPS", "httpsRedirect", site.httpsRedirect, "only when HTTPS is on")
-                }
                 checkField("Enabled", "enabled", site.enabled)
                 checkField("Write requests to the access log", "accessLog", site.accessLog)
                 profileSelect(kovexy, site.access, "No profile, every visitor gets in", "A location with its own profile replaces it completely.")

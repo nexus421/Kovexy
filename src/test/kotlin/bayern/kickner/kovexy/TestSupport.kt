@@ -101,6 +101,15 @@ fun rawRequest(
     }
 }
 
+/** One HTTPS request to the TLS proxy port, the way every site is reached (port 80 only redirects). */
+fun Harness.https(
+    host: String,
+    path: String = "/",
+    method: String = "GET",
+    headers: List<Pair<String, String>> = emptyList(),
+    body: ByteArray? = null,
+): RawResponse = rawRequest(ports.https, host, path, tls = true, method = method, headers = headers, body = body)
+
 private fun readLine(input: InputStream): String {
     val out = ByteArrayOutputStream()
     while (true) {

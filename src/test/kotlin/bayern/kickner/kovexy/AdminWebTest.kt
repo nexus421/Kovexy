@@ -91,18 +91,18 @@ class AdminWebTest {
         assertEquals(302, created.status, created.text)
         assertEquals("app", harness.kovexy.config.upstreams.single().name)
 
-        val stale = post("/sites/new", form("version" to version, "domains" to "a.test", "listenHttp" to "on", "enabled" to "on"), cookie)
+        val stale = post("/sites/new", form("version" to version, "domains" to "a.test", "enabled" to "on"), cookie)
         assertEquals(400, stale.status)
         assertTrue(stale.text.contains("changed since this page was loaded"))
 
-        val invalid = post("/sites/new", form("version" to harness.store.current.version, "domains" to "*.test", "listenHttp" to "on"), cookie)
+        val invalid = post("/sites/new", form("version" to harness.store.current.version, "domains" to "*.test"), cookie)
         assertEquals(400, invalid.status)
         assertTrue(invalid.text.contains("without wildcard"))
 
-        val site = post("/sites/new", form("version" to harness.store.current.version, "domains" to "a.test\nb.test", "listenHttp" to "on", "enabled" to "on", "rootUpstream" to "app"), cookie)
+        val site = post("/sites/new", form("version" to harness.store.current.version, "domains" to "a.test\nb.test", "enabled" to "on", "rootUpstream" to "app"), cookie)
         assertEquals(302, site.status)
         assertEquals(listOf("a.test", "b.test"), harness.kovexy.config.sites.single().domains)
-        assertEquals(502, rawRequest(harness.ports.http, "a.test").status, "The new site works at once (its upstream is down)")
+        assertEquals(502, harness.https("a.test").status, "The new site works at once (its upstream is down)")
         assertTrue(harness.store.backupDir.listFiles()!!.isNotEmpty(), "Every save keeps a copy of the previous file")
     }
 

@@ -9,7 +9,7 @@ sidebar, on a phone the button "Menu" opens it.
 | Page | What it does |
 |---|---|
 | Status | Sites, upstream servers with their state, certificates with expiry, requests and 5xx answers today, latest errors. Updates every 5 seconds over Server-Sent Events |
-| Sites | Sites with domains, listeners and HTTPS redirect, and their locations with target and headers. The button "Add security headers" adds HSTS, `nosniff` and a referrer policy as response headers |
+| Sites | Sites with domains and their locations with target and headers. The button "Add security headers" adds HSTS, `nosniff` and a referrer policy as response headers |
 | Upstreams | Groups of servers with weights, backups, sticky sessions and health check |
 | Default site | Answer for unknown domains |
 | Certificates | Every domain with state, expiry and issuer, "Renew now", ACME settings |
@@ -32,9 +32,8 @@ In this order:
 
 1. On port 80 `/.well-known/acme-challenge/` is answered at once.
 2. Banned addresses (from trap paths) get 403, for all sites.
-3. The site is chosen by domain and listener. A `Host` that names another domain than the request's authority gets
-   400. A site's domain on a listener the site does not use gets 404. Any other domain goes to the default site.
-4. Plain HTTP with `httpsRedirect` gets `308` to HTTPS. Then Kovexy's own paths under `/.kovexy/` (captcha),
+3. A `Host` that names another domain than the request's authority gets 400. Then plain HTTP gets `308` to HTTPS, for every host. Port 80 never reaches a site or the default site.
+4. The site is chosen by domain, any other domain goes to the default site. Then Kovexy's own paths under `/.kovexy/` (captcha),
    they never reach an upstream.
 5. The most specific location: longer paths before shorter ones, exact before prefix. A prefix only matches at path
    boundaries, `/api` matches `/api` and `/api/users` but not `/apix`. Upper and lower case count like in Caddy, `/Admin` is not
@@ -65,7 +64,7 @@ In this order:
 
 ## Certificates
 
-Every domain of an enabled site on the TLS listener gets its own certificate. Kovexy checks every 10 minutes and
+Every domain of an enabled site gets its own certificate. Kovexy checks every 10 minutes and
 renews in the last third of the lifetime (Caddy). After a failure it waits 1, 2, 2, 5, 10 minutes and so on, up to six
 hours between attempts, for at most 30 days, exactly like Caddy. After 30 days it stops until "Renew now" or until the
 domain is added again. While a domain fails against Let's Encrypt production the retries run

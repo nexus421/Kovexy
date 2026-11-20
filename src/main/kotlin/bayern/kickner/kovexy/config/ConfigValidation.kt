@@ -44,15 +44,6 @@ fun validateConfig(config: KovexyConfig): List<String> = buildList {
     config.accessProfiles.groupBy { it.name }.filter { it.value.size > 1 }.keys.forEach { add("access profile name \"$it\" is used more than once") }
 
     config.sites.forEachIndexed { i, site -> validateSite("sites[$i]", site, upstreamNames, profileNames) }
-    // The captcha only over HTTPS (decided on 18.11.2026): its cookie is Secure and __Host-
-    val httpsOnlyProfiles = config.accessProfiles.filter { it.captcha != null }.map { it.name }.toSet()
-    config.sites.forEach { site ->
-        val used = (listOfNotNull(site.access) + site.locations.mapNotNull { it.access }).filter { it in httpsOnlyProfiles }
-        val httpsOnly = LISTENER_HTTPS in site.listeners && (LISTENER_HTTP !in site.listeners || site.httpsRedirect)
-        if (used.isNotEmpty() && httpsOnly.not()) {
-            add("site ${site.domains.firstOrNull()} uses the profile ${used.first()} with a captcha, it must only be reachable over HTTPS (https listener, http off or with httpsRedirect)")
-        }
-    }
     (config.aiCrawlers.add.map { "aiCrawlers.add" to it } + config.aiCrawlers.ignore.map { "aiCrawlers.ignore" to it }).forEach { (field, entry) ->
         if (entry.isBlank()) add("$field must not contain empty entries")
         if (entry.length > MAX_AI_CRAWLER_ENTRY) add("$field entry \"${entry.take(40)}...\" is longer than $MAX_AI_CRAWLER_ENTRY characters")
@@ -174,10 +165,6 @@ private fun MutableList<String>.validateSite(owner: String, site: SiteConfig, up
         if (isValidHostName(domain).not()) add("$owner domain \"$domain\" must be a lower case domain name without wildcard, port or trailing dot")
     }
     site.domains.groupBy { it }.filter { it.value.size > 1 }.keys.forEach { add("$owner lists domain $it more than once") }
-    if (site.listeners.isEmpty()) add("$owner needs at least one listener")
-    site.listeners.forEach { name ->
-        if (DEFAULT_LISTENERS.none { it.name == name }) add("$owner listener \"$name\" does not exist, use \"$LISTENER_HTTP\" and/or \"$LISTENER_HTTPS\"")
-    }
     site.access?.let { if (it !in profiles) add("$owner.access \"$it\" is no access profile") }
 
     site.locations.forEachIndexed { j, location -> validateLocation("$owner.locations[$j]", location, upstreams, profiles) }

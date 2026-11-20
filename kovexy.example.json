@@ -130,11 +130,6 @@
         "example.com",
         "www.example.com"
       ],
-      "listeners": [
-        "http",
-        "https"
-      ],
-      "httpsRedirect": true,
       "locations": [
         {
           "path": "/",

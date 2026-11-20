@@ -64,8 +64,9 @@
   parallel handshakes cannot get past the limit. A browser sends each message as one frame, an app that sends more
   than 1 MiB per message from the browser does not work behind Kovexy. The relay waits until each frame is written,
   so a side that stops reading slows the other side down instead of filling the memory.
-- A domain of a site on a listener the site does not use (HTTP for a site with only HTTPS and the other way round)
-  gets 404, it never reaches the default site with the `Host` of a protected site.
+- HTTPS or nothing: port 80 answers ACME challenges and otherwise only redirects (`308`), no site and not the default
+  site is ever served over plain HTTP. `Location` is only built from a valid domain name or IP address in `Host`, anything
+  else gets 400, so a crafted `Host` cannot turn the redirect into an open redirect.
 - HTTPS upstreams without `skipCertVerify` must present a certificate from a trusted CA that names the configured
   address in its subject alternative names: an IP address as IP entry, a name as DNS entry (`*.` for one label). The
   common name does not count. Kovexy checks this itself, Ktor's client checks names too loosely.
@@ -142,8 +143,8 @@ turned off under Settings.
 - Rate limits count per profile and address in one second windows.
 - Captcha: page tokens are signed with an HMAC key that is new on every start, the return address only takes paths on
   the same host (never `//host` or a URL). Solved captchas are random IDs in memory, valid for one profile on one
-  domain, the cookie is `__Host-`, `HttpOnly`, `SameSite=Lax` and `Secure`, the captcha only runs on sites reachable
-  over HTTPS only. At most 100.000 solved captchas are kept, the oldest go first. The exploit filter never answers with
+  domain, the cookie is `__Host-`, `HttpOnly`, `SameSite=Lax` and `Secure`, the captcha only runs over HTTPS, which is the
+  only way a site is reachable. At most 100.000 solved captchas are kept, the oldest go first. The exploit filter never answers with
   a captcha, a crawler could solve it. The rate limit of the profile also covers `/.kovexy/`. reCAPTCHA answers are
   checked at Google on the server, at most 2 of one address at a time. A WebSocket that the captcha lets in needs an
   `Origin` of the same domain, a foreign page cannot open it with the visitor's cookies.

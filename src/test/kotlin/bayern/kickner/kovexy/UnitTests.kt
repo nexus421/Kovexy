@@ -66,7 +66,6 @@ class ConfigTest {
         assertEquals("{}\n", encodeConfig(KovexyConfig()))
         val withSite = KovexyConfig(sites = listOf(SiteConfig(listOf("a.test"), locations = listOf(LocationConfig("/", target = Target.Deny())))))
         val text = encodeConfig(withSite)
-        assertFalse(text.contains("httpsRedirect"), text)
         assertTrue(text.contains("\"type\": \"deny\""), text)
         assertEquals(withSite, (parseConfig(text) as ResultOf2.Success).value)
     }
