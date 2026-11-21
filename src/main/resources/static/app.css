@@ -50,8 +50,8 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; }
 
+/* No fixed height on html/body: it would cap .shell at one viewport, and the sticky sidebar would scroll away with the page. */
 body {
   display: flex;
   flex-direction: column;
