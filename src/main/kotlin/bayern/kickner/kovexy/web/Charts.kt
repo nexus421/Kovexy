@@ -19,12 +19,12 @@ private const val BOTTOM = 28
  */
 private const val CHART_STYLE = """
 .bg{fill:#f8f9fb}.grid{stroke:#e2e5ea;stroke-width:1}.axis{fill:#5f6672;font:11px system-ui,sans-serif}
-.s2{fill:#138a52}.s3{fill:#2f6fed}.s4{fill:#b35c00}.s5{fill:#c8322a}.in{fill:#22a6c4}.out{fill:#7c6cf6}
+.s2{fill:#138a52}.s3{fill:#2f6fed}.s4{fill:#b35c00}.s5{fill:#c8322a}.blk{fill:#c2338a}.in{fill:#22a6c4}.out{fill:#7c6cf6}
 .avg{stroke:#2f6fed;stroke-width:2;fill:none}.max{stroke:#7c6cf6;stroke-width:1.5;fill:none;stroke-dasharray:4 3}
 .p50{stroke:#2f6fed;stroke-width:2;fill:none}.p95{stroke:#22a6c4;stroke-width:1.5;fill:none;stroke-dasharray:6 3}.p99{stroke:#7c6cf6;stroke-width:1.5;fill:none;stroke-dasharray:2 3}
 .legend{font:12px system-ui,sans-serif;fill:#16181d}
 @media (prefers-color-scheme: dark){.bg{fill:#1c2027}.grid{stroke:#272c35}.axis{fill:#9aa2b1}.legend{fill:#e7e9ee}
-.s2{fill:#3ccf8e}.s3{fill:#5b8dff}.s4{fill:#f2a54a}.s5{fill:#ff6b61}.avg{stroke:#5b8dff}.max{stroke:#a78bfa}.p50{stroke:#5b8dff}.p95{stroke:#4cc9e6}.p99{stroke:#a78bfa}}
+.s2{fill:#3ccf8e}.s3{fill:#5b8dff}.s4{fill:#f2a54a}.s5{fill:#ff6b61}.blk{fill:#ff7ab8}.avg{stroke:#5b8dff}.max{stroke:#a78bfa}.p50{stroke:#5b8dff}.p95{stroke:#4cc9e6}.p99{stroke:#a78bfa}}
 """
 
 /**

@@ -4,6 +4,9 @@ import bayern.kickner.kovexy.access.Geo
 import bayern.kickner.kovexy.access.RateLimiter
 import bayern.kickner.kovexy.access.addressKey
 import bayern.kickner.kovexy.access.isLocalAddress
+import bayern.kickner.kovexy.stats.TopKind
+import bayern.kickner.kovexy.stats.statistics
+import bayern.kickner.kovexy.stats.topLists
 import bayern.kickner.kovexy.access.matchAiBot
 import bayern.kickner.kovexy.access.matchCommonExploit
 import bayern.kickner.kovexy.audit.AuditAction
@@ -197,6 +200,31 @@ class Phase2IntegrationTest {
                 assertEquals(403, get(h, "a.test", "/x").status, "Still banned where the profile does not name it")
                 assertEquals(403, get(h, "b.test", "/x").status, "Still banned on a domain without a profile")
                 assertEquals(200, get(h, "a.test", "/open/x").status, "The profile of this route names the address")
+            }
+        }
+    }
+
+    @Test
+    fun blockedRequestsAndRedirectsAreCounted(): Unit = runBlocking {
+        TestBackend().use { backend ->
+            Harness(config(backend.port, """{ "name": "p", "denyIps": ["127.0.0.1"] }, { "name": "open" }""")).use { h ->
+                assertEquals(403, get(h, "a.test", "/x").status)
+                assertEquals(200, get(h, "b.test", "/x").status)
+                assertEquals(308, rawRequest(h.ports.http, "a.test", "/x").status)
+                // The background writer collects records for a moment before it writes them
+                var rows = h.kovexy.storage.statistics(hourly = false, from = 0)
+                var tries = 0
+                while (rows.sumOf { it.requests } < 3 && tries++ < 50) {
+                    h.kovexy.accessLog.flush()
+                    delay(100)
+                    rows = h.kovexy.storage.statistics(hourly = false, from = 0)
+                }
+                assertEquals(3, rows.sumOf { it.requests })
+                assertEquals(1, rows.sumOf { it.blocked }, "Only the refused request counts as blocked, a redirect does not")
+                assertEquals(1, rows.sumOf { it.redirected })
+                assertEquals(listOf("IP_RULES" to 1L), h.kovexy.storage.topLists(0, null)[TopKind.BLOCK_KIND])
+                val blocked = h.kovexy.accessLog.latest(blockedOnly = true)
+                assertEquals("IP_RULES", blocked.single().block)
             }
         }
     }

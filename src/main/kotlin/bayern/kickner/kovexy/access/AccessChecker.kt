@@ -93,17 +93,19 @@ sealed interface AccessResult {
      *
      * @property status Status code, `204` with a closed connection for the exploit response `drop`.
      * @property reason For the access log, never shown to the visitor.
+     * @property kind Why, counted in the statistics.
      * @property allow Value of the `Allow` header for 405.
      */
-    data class Deny(val status: Int, val reason: String, val allow: String? = null) : AccessResult
+    data class Deny(val status: Int, val reason: String, val kind: BlockKind, val allow: String? = null) : AccessResult
 
     /**
      * Basic Auth needed: `401` with `WWW-Authenticate`.
      *
      * @property realm Realm of the profile.
      * @property reason For the access log.
+     * @property failed The visitor sent wrong credentials, which counts as blocked. A missing login does not.
      */
-    data class Challenge(val realm: String, val reason: String) : AccessResult
+    data class Challenge(val realm: String, val reason: String, val failed: Boolean = false) : AccessResult
 
     /**
      * The captcha of the profile has to be solved first (403 with the captcha page, like Zoraxy).
@@ -266,9 +268,9 @@ class AccessChecker(
         val country by lazy { if (profile.usesCountries) geo.country(request.address) else null }
 
         // 1. Block lists
-        if (profile.denyIps.any { cachedCidr(it)?.contains(request.address) == true }) return deny(403, "blocked IP", SecurityEventType.ACCESS_DENIED, request)
+        if (profile.denyIps.any { cachedCidr(it)?.contains(request.address) == true }) return deny(403, BlockKind.IP_RULES, "blocked IP", SecurityEventType.ACCESS_DENIED, request)
         if (profile.denyCountries.isNotEmpty() && country != null && country in profile.denyCountries) {
-            return deny(403, "blocked country $country", SecurityEventType.ACCESS_DENIED, request)
+            return deny(403, BlockKind.IP_RULES, "blocked country $country", SecurityEventType.ACCESS_DENIED, request)
         }
 
         // 2. Allow lists
@@ -279,35 +281,35 @@ class AccessChecker(
                 else -> c in profile.allowCountries
             }
             val byLocal = profile.allowLocal && isLocalAddress(request.address)
-            if (byIp.not() && byCountry.not() && byLocal.not()) return deny(403, "not on the allow list" + (country?.let { " ($it)" } ?: ""), SecurityEventType.ACCESS_DENIED, request)
+            if (byIp.not() && byCountry.not() && byLocal.not()) return deny(403, BlockKind.ALLOW_LIST, "not on the allow list" + (country?.let { " ($it)" } ?: ""), SecurityEventType.ACCESS_DENIED, request)
         }
 
         // 3. Exploit filter and trap paths
         val filter = profile.exploitFilter
         if (filter.commonExploits) matchCommonExploit(request.rawQuery, request.userAgent)?.let { group ->
             security.record(SecurityEventType.EXPLOIT_BLOCKED, request.address.hostAddress, request.domain, "exploit filter: $group: ${request.method} ${request.path}")
-            return AccessResult.Deny(filter.response.status, "exploit filter: $group")
+            return AccessResult.Deny(filter.response.status, "exploit filter: $group", BlockKind.EXPLOIT)
         }
         if (filter.aiBots) matchAiBot(request.userAgent, aiCrawlers())?.let { bot ->
             security.record(SecurityEventType.AI_BOT_BLOCKED, request.address.hostAddress, request.domain, "AI crawler: $bot: ${request.method} ${request.path}")
-            return AccessResult.Deny(filter.response.status, "AI crawler: $bot")
+            return AccessResult.Deny(filter.response.status, "AI crawler: $bot", BlockKind.AI_CRAWLER)
         }
         val traps = profile.trapPaths
         if (traps.enabled && request.exactRoute.not()) traps.paths.firstOrNull { request.path.startsWith(it) }?.let { trap ->
             // A foreign page could make every visitor's browser load a trap path, that only gets refused
-            if (request.foreignInitiated) return deny(403, "trap path $trap, not banned (sent for another site)", SecurityEventType.ACCESS_DENIED, request)
+            if (request.foreignInitiated) return deny(403, BlockKind.TRAP, "trap path $trap, not banned (sent for another site)", SecurityEventType.ACCESS_DENIED, request)
             // An address on the allow list of the profile is never banned (decided on 20.11.2026), the request is still refused
-            if (profile.allowsIp(request.address)) return deny(403, "trap path $trap, not banned (on the allow list)", SecurityEventType.ACCESS_DENIED, request)
+            if (profile.allowsIp(request.address)) return deny(403, BlockKind.TRAP, "trap path $trap, not banned (on the allow list)", SecurityEventType.ACCESS_DENIED, request)
             bans.ban(request.address, traps.banDuration, "trap path $trap", request.domain)
-            return AccessResult.Deny(403, "trap path $trap")
+            return AccessResult.Deny(403, "trap path $trap", BlockKind.TRAP)
         }
 
         // 4. Rate limit
-        if (rateLimitExceeded(profile, request.address, request.domain, "${request.method} ${request.path}")) return AccessResult.Deny(429, "rate limit")
+        if (rateLimitExceeded(profile, request.address, request.domain, "${request.method} ${request.path}")) return AccessResult.Deny(429, "rate limit", BlockKind.RATE_LIMIT)
 
         // 5. Allowed methods
         if (profile.allowedMethods.isNotEmpty() && request.method !in profile.allowedMethods) {
-            return deny(405, "method ${request.method} not allowed", SecurityEventType.METHOD_DENIED, request, allow = profile.allowedMethods.joinToString(", "))
+            return deny(405, BlockKind.METHOD, "method ${request.method} not allowed", SecurityEventType.METHOD_DENIED, request, allow = profile.allowedMethods.joinToString(", "))
         }
 
         // 6. Captcha
@@ -330,11 +332,11 @@ class AccessChecker(
         return when (val result = basicAuth.check(auth, request.authorization, ip, profile.name)) {
             is BasicResult.Ok -> AccessResult.Allow(result.user)
             BasicResult.Missing -> AccessResult.Challenge(auth.realm, "basic auth required")
-            BasicResult.Locked -> deny(429, "basic auth locked out", SecurityEventType.BASIC_AUTH_FAILED, request)
-            BasicResult.Busy -> AccessResult.Deny(503, "basic auth busy")
+            BasicResult.Locked -> deny(429, BlockKind.BASIC_AUTH, "basic auth locked out", SecurityEventType.BASIC_AUTH_FAILED, request)
+            BasicResult.Busy -> AccessResult.Deny(503, "basic auth busy", BlockKind.BASIC_AUTH)
             BasicResult.Wrong -> {
                 security.record(SecurityEventType.BASIC_AUTH_FAILED, ip, request.domain, request.path)
-                AccessResult.Challenge(auth.realm, "basic auth failed")
+                AccessResult.Challenge(auth.realm, "basic auth failed", failed = true)
             }
         }
     }
@@ -352,9 +354,9 @@ class AccessChecker(
         return true
     }
 
-    private fun deny(status: Int, reason: String, type: SecurityEventType, request: AccessRequest, allow: String? = null): AccessResult.Deny {
+    private fun deny(status: Int, kind: BlockKind, reason: String, type: SecurityEventType, request: AccessRequest, allow: String? = null): AccessResult.Deny {
         security.record(type, request.address.hostAddress, request.domain, "$reason: ${request.method} ${request.path}")
-        return AccessResult.Deny(status, reason, allow)
+        return AccessResult.Deny(status, reason, kind, allow)
     }
 }
 

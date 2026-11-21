@@ -1,6 +1,7 @@
 package bayern.kickner.kovexy.stats
 
 import bayern.kickner.klogger.KLogger
+import bayern.kickner.kovexy.access.REASON_HTTPS_REDIRECT
 import bayern.kickner.klogger.staticLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import org.jetbrains.exposed.v1.core.between
 import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.less
@@ -63,6 +65,7 @@ const val FALLBACK_KEY = ""
  * @property backend Address of the backend server, empty if none.
  * @property userAgent The visitor's `User-Agent`.
  * @property reason Why the request was refused or failed, empty otherwise.
+ * @property block [bayern.kickner.kovexy.access.BlockKind] name if Kovexy blocked the request, empty otherwise.
  * @property logged Whether the domain writes an access log. Statistics count every request.
  * @property referer The `Referer` without query, empty if none.
  * @property country ISO code of the visitor's country, empty if unknown.
@@ -82,6 +85,7 @@ data class AccessRecord(
     val backend: String,
     val userAgent: String,
     val reason: String,
+    val block: String = "",
     val logged: Boolean = true,
     val referer: String = "",
     val country: String = "",
@@ -90,7 +94,7 @@ data class AccessRecord(
 /** Kinds of the daily top lists. */
 enum class TopKind(val label: String) {
     IP("IPs"), COUNTRY("Countries"), PATH("Paths"), USER_AGENT("User agents"), REFERER("Referers"), METHOD("Methods"),
-    BACKEND("Backend servers"), BLOCK_REASON("Refusals by reason"),
+    BACKEND("Backend servers"), BLOCK_KIND("Blocked by"), BLOCK_REASON("Refusals by reason"),
 }
 
 /** Entries kept per top list, domain and day (Zoraxy limits its lists too). */
@@ -138,6 +142,7 @@ private fun topKeys(r: AccessRecord): List<Pair<TopKind, String>> = listOfNotNul
     r.referer.takeIf { it.isNotEmpty() }?.let { TopKind.REFERER to it },
     TopKind.METHOD to r.method,
     r.backend.takeIf { it.isNotEmpty() }?.let { TopKind.BACKEND to it },
+    r.block.takeIf { it.isNotEmpty() }?.let { TopKind.BLOCK_KIND to it },
     r.reason.takeIf { it.isNotEmpty() && r.status >= 400 }?.let { TopKind.BLOCK_REASON to it },
 ).map { it.first to it.second.take(512) }
 
@@ -145,9 +150,12 @@ private fun topKeys(r: AccessRecord): List<Pair<TopKind, String>> = listOfNotNul
 private class Counter(
     var requests: Long = 0, var s2: Long = 0, var s3: Long = 0, var s4: Long = 0, var s5: Long = 0,
     var bytesIn: Long = 0, var bytesOut: Long = 0, var durationSum: Long = 0, var durationMax: Long = 0,
+    var blocked: Long = 0, var redirected: Long = 0,
 ) {
     fun add(record: AccessRecord) {
         requests++
+        if (record.block.isNotEmpty()) blocked++
+        if (record.reason == REASON_HTTPS_REDIRECT) redirected++
         when (record.status / 100) {
             2 -> s2++
             3 -> s3++
@@ -228,6 +236,7 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
                 this[AccessLogTable.backend] = r.backend.take(300)
                 this[AccessLogTable.userAgent] = r.userAgent.take(512)
                 this[AccessLogTable.reason] = r.reason.take(200)
+                this[AccessLogTable.block] = r.block.take(20)
             }
             merge(StatsHourlyTable, hourly)
             merge(StatsDailyTable, daily)
@@ -300,6 +309,8 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
                 counter.bytesOut += row[table.bytesOut]
                 counter.durationSum += row[table.durationSum]
                 counter.durationMax = maxOf(counter.durationMax, row[table.durationMax])
+                counter.blocked += row[table.blocked]
+                counter.redirected += row[table.redirected]
             }
         }
         table.batchUpsert(counters.entries, shouldReturnGeneratedValues = false) { (key, c) ->
@@ -314,6 +325,8 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
             this[table.bytesOut] = c.bytesOut
             this[table.durationSum] = c.durationSum
             this[table.durationMax] = c.durationMax
+            this[table.blocked] = c.blocked
+            this[table.redirected] = c.redirected
         }
     }
 
@@ -331,9 +344,11 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
      * @param status Only this status class (`2` for 2xx), `null` for all.
      * @param search Only entries whose path, IP or domain contain this text.
      * @param limit Most entries returned.
+     * @param blockedOnly Only requests Kovexy blocked.
      */
-    fun latest(domain: String? = null, status: Int? = null, search: String? = null, limit: Int = 200): List<AccessRecord> = storage.tx {
+    fun latest(domain: String? = null, status: Int? = null, search: String? = null, limit: Int = 200, blockedOnly: Boolean = false): List<AccessRecord> = storage.tx {
         val query = AccessLogTable.selectAll()
+        if (blockedOnly) query.andWhere { AccessLogTable.block neq "" }
         domain?.let { s -> query.andWhere { AccessLogTable.domain eq s } }
         status?.let { s -> query.andWhere { AccessLogTable.status.between(s * 100, s * 100 + 99) } }
         search?.takeIf { it.isNotBlank() }?.let { text ->
@@ -349,7 +364,7 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
                 host = row[AccessLogTable.host], path = row[AccessLogTable.path], status = row[AccessLogTable.status],
                 bytesIn = row[AccessLogTable.bytesIn], bytesOut = row[AccessLogTable.bytesOut], durationMs = row[AccessLogTable.durationMs],
                 domain = row[AccessLogTable.domain], route = row[AccessLogTable.route], backend = row[AccessLogTable.backend],
-                userAgent = row[AccessLogTable.userAgent], reason = row[AccessLogTable.reason],
+                userAgent = row[AccessLogTable.userAgent], reason = row[AccessLogTable.reason], block = row[AccessLogTable.block],
             )
         }
     }
@@ -373,6 +388,8 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
  * Aggregated values of one statistics bucket.
  *
  * @property bucket Start of the hour or day, Unix milliseconds.
+ * @property blocked Requests Kovexy blocked (see [bayern.kickner.kovexy.access.BlockKind]).
+ * @property redirected Plain HTTP requests answered with the redirect to HTTPS.
  */
 data class StatsRow(
     val domain: String,
@@ -386,6 +403,8 @@ data class StatsRow(
     val bytesOut: Long,
     val durationSum: Long,
     val durationMax: Long,
+    val blocked: Long = 0,
+    val redirected: Long = 0,
 ) {
     /** Mean response time in milliseconds. */
     val durationAvg: Long get() = if (requests == 0L) 0 else durationSum / requests
@@ -406,7 +425,7 @@ fun Storage.statistics(hourly: Boolean, from: Long, domains: List<String>? = nul
         StatsRow(
             row[table.domain], row[table.bucket], row[table.requests], row[table.status2xx], row[table.status3xx],
             row[table.status4xx], row[table.status5xx], row[table.bytesIn], row[table.bytesOut], row[table.durationSum],
-            row[table.durationMax],
+            row[table.durationMax], row[table.blocked], row[table.redirected],
         )
     }
 }

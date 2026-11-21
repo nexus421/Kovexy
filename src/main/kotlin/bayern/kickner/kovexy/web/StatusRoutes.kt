@@ -2,7 +2,10 @@ package bayern.kickner.kovexy.web
 
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.formatTimestamp
+import bayern.kickner.kovexy.access.BlockKind
 import bayern.kickner.kovexy.stats.AccessLogTable
+import bayern.kickner.kovexy.stats.TopKind
+import bayern.kickner.kovexy.stats.topLists
 import bayern.kickner.kovexy.stats.FALLBACK_KEY
 import bayern.kickner.kovexy.stats.statistics
 import io.ktor.server.routing.Route
@@ -69,6 +72,8 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
     val todayRows = kovexy.storage.statistics(hourly = false, from = today)
     val requestsToday = todayRows.sumOf { it.requests }
     val errorsToday = todayRows.sumOf { it.status5xx }
+    val blockedToday = todayRows.sumOf { it.blocked }
+    val redirectsToday = todayRows.sumOf { it.redirected }
     val servers = kovexy.backends.all().flatMap { it.servers }
     val certs = kovexy.certificates.status().filter { it.wanted }
     val certProblems = certs.count { it.lastError != null || it.notAfter == null || it.notAfter - now < EXPIRY_WARNING.inWholeMilliseconds }
@@ -78,6 +83,8 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
         stat("${servers.count { it.healthy }} / ${servers.size}", "Backend servers up")
         stat("${certs.size - certProblems} / ${certs.size}", "Certificates fine")
         stat(requestsToday.toString(), "Requests today")
+        stat(blockedToday.toString(), "Blocked today")
+        stat(redirectsToday.toString(), "HTTPS redirects today")
         stat(errorsToday.toString(), "5xx answers today")
         stat(kovexy.webSockets.count.toString(), "Open WebSockets")
     }
@@ -130,6 +137,21 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
         }
     }
 
+    card("Blocked today", "gap-top") {
+        val reasons = kovexy.storage.topLists(today, null, 20)[TopKind.BLOCK_KIND].orEmpty()
+        if (reasons.isEmpty()) p("muted") { +"Nothing was blocked today." }
+        else table("top-list") {
+            tbody {
+                reasons.forEach { (key, count) ->
+                    tr {
+                        td("top-key") { +blockLabel(key) }
+                        td("num") { +count.toString() }
+                    }
+                }
+            }
+        }
+    }
+
     card("Latest errors", "gap-top") {
         val latest = kovexy.storage.tx {
             AccessLogTable.selectAll().where { AccessLogTable.status greaterEq 500 }
@@ -171,6 +193,9 @@ fun FlowContent.certificatePill(cert: bayern.kickner.kovexy.tls.CertificateStatu
         else -> pill("ok", "valid")
     }
 }
+
+/** Display name of a stored [BlockKind] name, the name itself for one that does not exist any more. */
+fun blockLabel(key: String): String = BlockKind.entries.firstOrNull { it.name == key }?.label ?: key
 
 /** Display name of a statistics site key. */
 fun domainLabel(key: String): String = if (key == FALLBACK_KEY) "Fallback" else key

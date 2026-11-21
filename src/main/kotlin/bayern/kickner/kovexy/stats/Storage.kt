@@ -39,6 +39,9 @@ object AccessLogTable : Table("access_log") {
     val backend = varchar("upstream", 300)
     val userAgent = varchar("user_agent", 512)
     val reason = varchar("reason", 200)
+
+    /** [bayern.kickner.kovexy.access.BlockKind] name if the request was blocked, empty otherwise. */
+    val block = varchar("block", 20).default("")
     override val primaryKey = PrimaryKey(id)
 }
 
@@ -55,6 +58,8 @@ abstract class StatsTable(name: String) : Table(name) {
     val bytesOut = long("bytes_out")
     val durationSum = long("duration_sum_ms")
     val durationMax = long("duration_max_ms")
+    val blocked = long("blocked").default(0)
+    val redirected = long("redirected").default(0)
     override val primaryKey = PrimaryKey(domain, bucket)
 }
 
@@ -201,6 +206,11 @@ class Storage(val file: File) {
             Triple("sessions", "sub", "VARCHAR(256) NOT NULL DEFAULT 'local'"),
             Triple("sessions", "name", "VARCHAR(100) NOT NULL DEFAULT 'admin'"),
             Triple("incus_decisions", "target", "VARCHAR(600) NOT NULL DEFAULT ''"),
+            Triple("access_log", "block", "VARCHAR(20) NOT NULL DEFAULT ''"),
+            Triple("stats_hourly", "blocked", "BIGINT NOT NULL DEFAULT 0"),
+            Triple("stats_hourly", "redirected", "BIGINT NOT NULL DEFAULT 0"),
+            Triple("stats_daily", "blocked", "BIGINT NOT NULL DEFAULT 0"),
+            Triple("stats_daily", "redirected", "BIGINT NOT NULL DEFAULT 0"),
         )
         DriverManager.getConnection("jdbc:sqlite:${file.absolutePath}").use { connection ->
             added.forEach { (table, column, definition) ->

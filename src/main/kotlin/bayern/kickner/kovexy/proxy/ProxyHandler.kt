@@ -10,6 +10,8 @@ import bayern.kickner.kovexy.access.Geo
 import bayern.kickner.kovexy.access.AccessRequest
 import bayern.kickner.kovexy.access.AccessResult
 import bayern.kickner.kovexy.access.BanStore
+import bayern.kickner.kovexy.access.BlockKind
+import bayern.kickner.kovexy.access.REASON_HTTPS_REDIRECT
 import bayern.kickner.kovexy.access.allowsIp
 import bayern.kickner.kovexy.access.isDrop
 import bayern.kickner.kovexy.access.isForeignInitiated
@@ -93,6 +95,9 @@ private class Trace(val start: Long, val clientIp: String, val method: String, v
     var route = ""
     var backend = ""
     var reason = ""
+
+    /** Why the request was blocked, `null` if it was not. */
+    var block: BlockKind? = null
     var logged = true
 }
 
@@ -176,7 +181,7 @@ class ProxyHandler(
                     time = trace.start, clientIp = trace.clientIp, method = trace.method, host = trace.host, path = trace.path,
                     status = trace.status, bytesIn = trace.bytesIn.get(), bytesOut = trace.bytesOut.get(),
                     durationMs = clock() - trace.start, domain = trace.domain, route = trace.route, backend = trace.backend,
-                    userAgent = trace.userAgent, reason = trace.reason, logged = trace.logged,
+                    userAgent = trace.userAgent, reason = trace.reason, block = trace.block?.name.orEmpty(), logged = trace.logged,
                     referer = refererWithoutQuery(call.request.headers[HttpHeaders.Referrer]),
                     country = parseIpLiteral(trace.clientIp)?.let { runCatching { geo.country(InetAddress.getByAddress(it)) }.getOrNull() }.orEmpty(),
                 )
@@ -196,6 +201,7 @@ class ProxyHandler(
         // 0. A path that cannot be decoded cannot be checked against any rule
         if (isValidPath(rawPath).not()) {
             trace.reason = "bad path"
+            trace.block = BlockKind.MALFORMED
             respondText(call, trace, "Bad Request", ContentType.Text.Plain, HttpStatusCode.BadRequest)
             return
         }
@@ -205,6 +211,7 @@ class ProxyHandler(
         val hostHeader = call.request.headers[HttpHeaders.Host]
         if (hostHeader != null && domainOfHostHeader(hostHeader) != trace.host.ifEmpty { null }) {
             trace.reason = "host mismatch"
+            trace.block = BlockKind.MALFORMED
             respondText(call, trace, "Bad Request", ContentType.Text.Plain, HttpStatusCode.BadRequest)
             return
         }
@@ -224,6 +231,7 @@ class ProxyHandler(
         // (decided on 20.11.2026). Without a profile (unknown domain, fallback) every ban holds
         if (address != null) bans.banOf(address)?.takeIf { table.profileFor(trace.host, normalizePath(rawPath))?.allowsIp(address) != true }?.let {
             trace.reason = "banned"
+            trace.block = BlockKind.BANNED
             respondText(call, trace, neutralPage(403, "Forbidden", "Access to this address is not allowed."), ContentType.Text.Html, HttpStatusCode.Forbidden)
             return
         }
@@ -254,6 +262,7 @@ class ProxyHandler(
                 access.rateLimitExceeded(reservedProfile, address, domain.name, "${call.request.httpMethod.value} $path")
             ) {
                 trace.reason = "rate limit"
+                trace.block = BlockKind.RATE_LIMIT
                 respondText(call, trace, neutralPage(429, "Too Many Requests", "Too many requests, please try again in a moment."), ContentType.Text.Html, HttpStatusCode.TooManyRequests)
                 return
             }
@@ -272,6 +281,7 @@ class ProxyHandler(
         // Fail closed: a profile that cannot check the address does not let the request through unchecked
         if (profile != null && address == null) {
             trace.reason = "unknown address"
+            trace.block = BlockKind.IP_RULES
             respondText(call, trace, neutralPage(403, "Forbidden", "Access to this address is not allowed."), ContentType.Text.Html, HttpStatusCode.Forbidden)
             return
         }
@@ -303,6 +313,7 @@ class ProxyHandler(
                     if (request.isWebSocket && profile.captcha != null && origin != null && originHost(origin) != trace.host) {
                         route?.let { trace.route = it.path }
                         trace.reason = "websocket from another origin"
+                        trace.block = BlockKind.ORIGIN
                         respondText(call, trace, neutralPage(403, "Forbidden", "Access to this address is not allowed."), ContentType.Text.Html, HttpStatusCode.Forbidden)
                         return
                     }
@@ -311,6 +322,7 @@ class ProxyHandler(
                 is AccessResult.CaptchaRequired -> {
                     route?.let { trace.route = it.path }
                     trace.reason = "captcha"
+                    trace.block = BlockKind.CAPTCHA
                     trace.status = 403
                     reserved.challenge(call, result.profile, result.config, trace.host, rawUri)
                     return
@@ -319,6 +331,7 @@ class ProxyHandler(
                 is AccessResult.Deny -> {
                     route?.let { trace.route = it.path }
                     trace.reason = result.reason
+                    trace.block = result.kind
                     if (result.isDrop) {
                         call.response.headers.append(HttpHeaders.Connection, "close", safeOnly = false)
                         trace.status = 204
@@ -334,6 +347,7 @@ class ProxyHandler(
                 is AccessResult.Challenge -> {
                     route?.let { trace.route = it.path }
                     trace.reason = result.reason
+                    if (result.failed) trace.block = BlockKind.BASIC_AUTH
                     call.response.headers.append(HttpHeaders.WWWAuthenticate, "Basic realm=\"${result.realm}\", charset=\"UTF-8\"")
                     respondText(call, trace, neutralPage(401, "Unauthorized", "This address needs a login."), ContentType.Text.Html, HttpStatusCode.Unauthorized)
                     return
@@ -401,6 +415,7 @@ class ProxyHandler(
         val usable = isValidHostName(domain) || parseIpLiteral(domain.removeSurrounding("[", "]")) != null
         if (usable.not()) {
             trace.reason = "bad host"
+            trace.block = BlockKind.MALFORMED
             respondText(call, trace, "Bad Request", ContentType.Text.Plain, HttpStatusCode.BadRequest)
             return
         }
@@ -411,7 +426,7 @@ class ProxyHandler(
         val port = httpsPort().let { if (it == 443) "" else ":$it" }
         call.response.headers.append(HttpHeaders.Location, "https://$domain$port$rawUri")
         trace.status = 308
-        trace.reason = "https redirect"
+        trace.reason = REASON_HTTPS_REDIRECT
         call.respond(HttpStatusCode.PermanentRedirect)
     }
 
@@ -517,6 +532,7 @@ class ProxyHandler(
                 val webSocketKey = parseIpLiteral(trace.clientIp)?.let { addressKey(InetAddress.getByAddress(it), WEBSOCKET_IPV6_PREFIX) }
                 if (webSockets.reserve(webSocketKey).not()) {
                     trace.reason = "too many websockets"
+                    trace.block = BlockKind.RATE_LIMIT
                     respondText(call, trace, neutralPage(503, "Service Unavailable", "Too many open connections, please try again later."), ContentType.Text.Html, HttpStatusCode.ServiceUnavailable)
                     return
                 }

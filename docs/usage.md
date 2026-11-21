@@ -8,13 +8,13 @@ sidebar, on a phone the button "Menu" opens it.
 
 | Page | What it does |
 |---|---|
-| Status | Domains, backend servers with their state, certificates with expiry, requests and 5xx answers today, latest errors. Updates every 5 seconds over Server-Sent Events |
+| Status | Domains, backend servers with their state, certificates with expiry, requests, blocked requests (with the reason), HTTPS redirects and 5xx answers today, latest errors. Updates every 5 seconds over Server-Sent Events |
 | Domains | Domains with their names and routes, each route with target and headers. The button "Add security headers" adds HSTS, `nosniff` and a referrer policy as response headers |
 | Backends | Groups of servers with weights, backups, sticky sessions and health check |
 | Fallback | Answer for unknown domains |
 | Certificates | Every domain with state, expiry and issuer, "Renew now", ACME settings |
-| Statistics | Charts per domain for 24 hours, 7, 30 and 365 days: requests by status class, response time with median, 95th and 99th percentile, traffic, and daily top lists of IPs, countries, paths, user agents, referers, methods, backend servers and refusals by reason |
-| Access log | The latest requests, filtered by domain, status class and text |
+| Statistics | Charts per domain for 24 hours, 7, 30 and 365 days: requests by status class, blocked requests, response time with median, 95th and 99th percentile, traffic, and daily top lists of IPs, countries, paths, user agents, referers, methods, backend servers and refusals by reason |
+| Access log | The latest requests, filtered by domain, status class (or only blocked requests) and text. A blocked request shows why it was blocked |
 | Access | Access profiles: IP and country rules, exploit filter, trap paths, rate limit, methods, captcha, Basic Auth, the state of the country data, and changes to the AI crawler list for every profile |
 | Webhooks | Targets with template and events, the KNot preset and a test message |
 | Security | Active bans with "Lift", the latest security events by kind |

@@ -25,15 +25,16 @@ fun Route.accessLogRoutes(kovexy: Kovexy) {
         val params = call.request.queryParameters
         val domains = kovexy.config.domains.map { it.names.first() }
         val domain = params["domain"]?.takeIf { it != "*" }
+        val blockedOnly = params["status"] == "blocked"
         val status = params["status"]?.toIntOrNull()?.takeIf { it in 1..5 }
         val search = params["q"]?.trim()?.take(200)
-        val entries = kovexy.accessLog.latest(domain, status, search, PAGE_SIZE)
+        val entries = kovexy.accessLog.latest(domain, status, search, PAGE_SIZE, blockedOnly)
         call.page("Access log", call.session, Nav.ACCESS_LOG) {
             pageHeader("Access log", "One line per request, newest first. The query string is never stored, it often holds tokens. Kept ${kovexy.config.retention.accessLog}.")
             card {
                 form(action = "/access-log", method = FormMethod.get, classes = "filters") {
                     selectField("Domain", "domain", domain ?: "*", listOf("*" to "All domains", "" to "Fallback") + domains.map { it to it }, autosubmit = true)
-                    selectField("Status", "status", status?.toString() ?: "", listOf("" to "All", "2" to "2xx", "3" to "3xx", "4" to "4xx", "5" to "5xx"), autosubmit = true)
+                    selectField("Status", "status", if (blockedOnly) "blocked" else status?.toString() ?: "", listOf("" to "All", "2" to "2xx", "3" to "3xx", "4" to "4xx", "5" to "5xx", "blocked" to "Blocked"), autosubmit = true)
                     textField("Search", "q", search.orEmpty(), required = false, placeholder = "path, IP or domain")
                     submit("Filter", "")
                 }
@@ -51,6 +52,7 @@ fun Route.accessLogRoutes(kovexy: Kovexy) {
                                     td {
                                         attributes["data-label"] = "Request"
                                         span("break") { +"${e.method} ${e.host}${e.path}" }
+                                        if (e.block.isNotEmpty()) pill("warn", blockLabel(e.block))
                                         if (e.reason.isNotEmpty()) span("muted small") { +" (${e.reason})" }
                                         if (e.userAgent.isNotEmpty()) div("muted small break") { +e.userAgent }
                                     }

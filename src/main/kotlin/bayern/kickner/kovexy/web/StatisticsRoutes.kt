@@ -66,6 +66,8 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                 stat(totals.sumOf { it.requests }.toString(), "Requests")
                 stat(totals.sumOf { it.status4xx }.toString(), "4xx answers")
                 stat(totals.sumOf { it.status5xx }.toString(), "5xx answers")
+                stat(totals.sumOf { it.blocked }.toString(), "Blocked")
+                stat(totals.sumOf { it.redirected }.toString(), "HTTPS redirects")
                 stat(bytes(totals.sumOf { it.bytesOut }), "Sent")
                 stat(bytes(totals.sumOf { it.bytesIn }), "Received")
                 val requests = totals.sumOf { it.requests }
@@ -76,6 +78,10 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                 stat(formatLatencyBound(histogramQuantile(histogram, 0.99)), "99th percentile")
             }
             card("Requests by status", "gap-top") { chart("/statistics/chart.svg?metric=requests&$query", "Requests per ${if (range.hourly) "hour" else "day"} by status class") }
+            card("Blocked requests", "gap-top") {
+                chart("/statistics/chart.svg?metric=blocked&$query", "Requests Kovexy blocked per ${if (range.hourly) "hour" else "day"}")
+                p("muted small") { +"Bans, block and allow lists, exploit filter, AI crawlers, trap paths, rate limits, methods, captcha, failed Basic Auth and malformed requests. The reasons are in the top list \"Blocked by\"." }
+            }
             card("Response time", "gap-top") { chart("/statistics/chart.svg?metric=duration&$query", "Mean and highest response time") }
             card("Response time percentiles", "gap-top") {
                 chart("/statistics/chart.svg?metric=percentiles&$query", "Median, 95th and 99th percentile of the response time")
@@ -87,7 +93,7 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                 if (perDomain.isEmpty()) p("muted") { +"No requests in this range." }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Domain" }; th(classes = "num") { +"Requests" }; th(classes = "num") { +"2xx" }; th(classes = "num") { +"3xx" }; th(classes = "num") { +"4xx" }; th(classes = "num") { +"5xx" }; th(classes = "num") { +"Sent" }; th(classes = "num") { +"Mean" }; th(classes = "num") { +"Max" } } }
+                        thead { tr { th { +"Domain" }; th(classes = "num") { +"Requests" }; th(classes = "num") { +"2xx" }; th(classes = "num") { +"3xx" }; th(classes = "num") { +"4xx" }; th(classes = "num") { +"5xx" }; th(classes = "num") { +"Blocked" }; th(classes = "num") { +"Sent" }; th(classes = "num") { +"Mean" }; th(classes = "num") { +"Max" } } }
                         tbody {
                             perDomain.entries.sortedByDescending { e -> e.value.sumOf { it.requests } }.forEach { (key, list) ->
                                 val requests = list.sumOf { it.requests }
@@ -98,6 +104,7 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                                     td("num") { attributes["data-label"] = "3xx"; +list.sumOf { it.status3xx }.toString() }
                                     td("num") { attributes["data-label"] = "4xx"; +list.sumOf { it.status4xx }.toString() }
                                     td("num") { attributes["data-label"] = "5xx"; +list.sumOf { it.status5xx }.toString() }
+                                    td("num") { attributes["data-label"] = "Blocked"; +list.sumOf { it.blocked }.toString() }
                                     td("num") { attributes["data-label"] = "Sent"; +bytes(list.sumOf { it.bytesOut }) }
                                     td("num") { attributes["data-label"] = "Mean"; +"${if (requests == 0L) 0 else list.sumOf { it.durationSum } / requests} ms" }
                                     td("num") { attributes["data-label"] = "Max"; +"${list.maxOfOrNull { it.durationMax } ?: 0} ms" }
@@ -122,7 +129,7 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                             tbody {
                                 entries.forEach { (key, count) ->
                                     tr {
-                                        td("top-key") { +key }
+                                        td("top-key") { +(if (kind == TopKind.BLOCK_KIND) blockLabel(key) else key) }
                                         td("num") { +count.toString() }
                                     }
                                 }
@@ -156,6 +163,7 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                 fun q(value: Double) = perBucket.map { (histogramQuantile(it, value) ?: 0L).coerceAtMost(LATENCY_BOUNDS.last()).toDouble() }
                 chartSvg(buckets, listOf(Series("median", "p50", q(0.5)), Series("95th", "p95", q(0.95)), Series("99th", "p99", q(0.99))), stacked = false, hourly = range.hourly, unit = "ms")
             }
+            "blocked" -> chartSvg(buckets, listOf(Series("blocked", "blk", sum { it.blocked })), stacked = true, hourly = range.hourly)
             "traffic" -> chartSvg(buckets, listOf(Series("received", "in", sum { it.bytesIn }), Series("sent", "out", sum { it.bytesOut })), stacked = true, hourly = range.hourly, unit = "B")
             else -> chartSvg(buckets, listOf(
                 Series("2xx", "s2", sum { it.status2xx }), Series("3xx", "s3", sum { it.status3xx }),
