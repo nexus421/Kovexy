@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.config.HeaderAction
 import bayern.kickner.kovexy.config.HeaderRule
@@ -78,16 +79,16 @@ fun Route.domainRoutes(kovexy: Kovexy) {
                 linkButton("/domains/new", "Add domain", "primary")
             }
             card {
-                if (config.domains.isEmpty()) p("muted") { +"No domains yet. Add one to forward a name to a backend." }
+                if (config.domains.isEmpty()) p("muted") { +t("No domains yet. Add one to forward a name to a backend.") }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Domains" }; th { +"Routes" }; th { +"State" }; th { } } }
+                        thead { tr { th { +t("Domains") }; th { +t("Routes") }; th { +t("State") }; th { } } }
                         tbody {
                             config.domains.forEachIndexed { i, domain ->
                                 tr {
-                                    td { attributes["data-label"] = "Domains"; a(href = "/domains/$i") { +domain.names.joinToString(", ") } }
-                                    td { attributes["data-label"] = "Routes"; +domain.routes.joinToString(", ") { it.path + " → " + targetLabel(it.target) } }
-                                    td { attributes["data-label"] = "State"; if (domain.enabled) pill("ok", "enabled") else pill("", "disabled") }
+                                    td { attributes["data-label"] = t("Domains"); a(href = "/domains/$i") { +domain.names.joinToString(", ") } }
+                                    td { attributes["data-label"] = t("Routes"); +domain.routes.joinToString(", ") { it.path + " → " + targetLabel(it.target) } }
+                                    td { attributes["data-label"] = t("State"); if (domain.enabled) pill("ok", "enabled") else pill("", "disabled") }
                                     td("actions") { linkButton("/domains/$i", "Edit", "sm") }
                                 }
                             }
@@ -188,10 +189,10 @@ fun Route.domainRoutes(kovexy: Kovexy) {
 
 /** A short description of a target for lists. */
 fun targetLabel(target: Target): String = when (target) {
-    is Target.Backend -> "backend ${target.backend}"
-    is Target.Static -> "files ${target.root}"
+    is Target.Backend -> t("backend {0}", target.backend)
+    is Target.Static -> t("files {0}", target.root)
     is Target.Redirect -> "${target.status} ${target.url}"
-    is Target.Deny -> "blocked ${target.status}"
+    is Target.Deny -> t("blocked {0}", target.status)
 }
 
 private suspend fun ApplicationCall.domainIndex(kovexy: Kovexy): Int? {
@@ -234,32 +235,32 @@ private suspend fun ApplicationCall.domainForm(kovexy: Kovexy, index: Int?, doma
         card("Domain") {
             form(action = if (index == null) "/domains/new" else "/domains/$index", method = FormMethod.post, classes = "form") {
                 versionField(version)
-                textAreaField("Domain names", "names", domain.names.joinToString("\n"), rows = 3, hint = "One per line, exact names like example.com and www.example.com. No wildcards.", required = true)
+                textAreaField("Domain names", "names", domain.names.joinToString("\n"), rows = 3, hint = t("One per line, exact names like example.com and www.example.com. No wildcards."), required = true)
                 checkField("Enabled", "enabled", domain.enabled, help = "domain.enabled")
                 checkField("Write requests to the access log", "accessLog", domain.accessLog)
                 profileSelect(kovexy, domain.access, "No profile, every visitor gets in", "A route with its own profile replaces it completely.")
                 if (index == null) {
                     val backends = kovexy.config.backends.map { it.name to it.name }
                     selectField("Forward / to", "rootBackend", backends.firstOrNull()?.first.orEmpty(), listOf("" to "nothing yet, add routes later") + backends,
-                        hint = "Creates the route / with this backend.")
+                        hint = t("Creates the route / with this backend."))
                 }
                 div("btn-row") { submit(if (index == null) "Add domain" else "Save domain") }
             }
         }
         if (index != null) {
             card("Routes", "gap-top") {
-                p("muted") { +"The most specific route wins: longer paths before shorter ones, exact before prefix. A prefix only matches at path boundaries, /api matches /api/users but not /apix." }
-                if (domain.routes.isEmpty()) p("muted") { +"No routes yet, every request gets a 404." }
+                p("muted") { +t("The most specific route wins: longer paths before shorter ones, exact before prefix. A prefix only matches at path boundaries, /api matches /api/users but not /apix.") }
+                if (domain.routes.isEmpty()) p("muted") { +t("No routes yet, every request gets a 404.") }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Path" }; th { +"Match" }; th { +"Target" }; th { +"State" }; th { } } }
+                        thead { tr { th { +t("Path") }; th { +t("Match") }; th { +t("Target") }; th { +t("State") }; th { } } }
                         tbody {
                             domain.routes.forEachIndexed { j, route ->
                                 tr {
-                                    td { attributes["data-label"] = "Path"; a(href = "/domains/$index/routes/$j") { +route.path } }
-                                    td { attributes["data-label"] = "Match"; +route.match.name.lowercase() }
-                                    td { attributes["data-label"] = "Target"; +targetLabel(route.target) }
-                                    td { attributes["data-label"] = "State"; if (route.enabled) pill("ok", "enabled") else pill("", "disabled") }
+                                    td { attributes["data-label"] = t("Path"); a(href = "/domains/$index/routes/$j") { +route.path } }
+                                    td { attributes["data-label"] = t("Match"); +t(route.match.name.lowercase()) }
+                                    td { attributes["data-label"] = t("Target"); +targetLabel(route.target) }
+                                    td { attributes["data-label"] = t("State"); if (route.enabled) pill("ok", "enabled") else pill("", "disabled") }
                                     td("actions") { linkButton("/domains/$index/routes/$j", "Edit", "sm") }
                                 }
                             }
@@ -269,8 +270,8 @@ private suspend fun ApplicationCall.domainForm(kovexy: Kovexy, index: Int?, doma
                 div("btn-row gap-top") { linkButton("/domains/$index/routes/new", "Add route", "primary") }
             }
             card("Delete domain", "danger gap-top") {
-                p("muted") { +"The certificates stay on disk but are not renewed any more." }
-                postButton("/domains/$index/delete", "Delete domain", "danger", confirm = "Delete this domain?", hidden = mapOf("version" to version))
+                p("muted") { +t("The certificates stay on disk but are not renewed any more.") }
+                postButton("/domains/$index/delete", "Delete domain", "danger", confirm = t("Delete this domain?"), hidden = mapOf("version" to version))
             }
         }
     }
@@ -371,45 +372,45 @@ private data class RouteForm(
 private suspend fun ApplicationCall.routeForm(kovexy: Kovexy, domain: Int, index: Int?, form: RouteForm, problems: List<String>, posted: String? = null) {
     val version = posted ?: kovexy.configStore.current.version
     val domainName = kovexy.config.domains[domain].names.firstOrNull().orEmpty()
-    val title = if (index == null) "Add route" else "Route ${form.path}"
+    val title = if (index == null) "Add route" else t("Route {0}", form.path)
     page(title, session, Nav.DOMAINS, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
-        pageHeader(title, "Domain $domainName") { linkButton("/domains/$domain", "Back to the domain", "ghost") }
+        pageHeader(title, t("Domain {0}", domainName)) { linkButton("/domains/$domain", "Back to the domain", "ghost") }
         if (problems.isNotEmpty()) problems("Not saved:", problems)
         card {
             form(action = "/domains/$domain/routes/${index ?: "new"}", method = FormMethod.post, classes = "form") {
                 versionField(version)
                 div("grid-2") {
-                    textField("Path", "path", form.path, hint = "Starts with /, a prefix without trailing slash.", help = "route.path")
+                    textField("Path", "path", form.path, hint = t("Starts with /, a prefix without trailing slash."), help = "route.path")
                     selectField("Match", "match", form.match, listOf("prefix" to "Prefix: the path and everything below it", "exact" to "Exact: only this path"))
                 }
                 checkField("Enabled", "enabled", form.enabled, help = "route.enabled")
                 profileSelect(kovexy, form.access.ifEmpty { null }, "Profile of the domain", "An own profile replaces the one of the domain completely.")
                 selectField("Target", "targetType", form.targetType, listOf("backend" to "Backend", "static" to "Static files", "redirect" to "Redirect", "deny" to "Block"))
                 fieldSet("target-fields target-backend") {
-                    legend { +"Backend" }
+                    legend { +t("Backend") }
                     selectField("Backend", "backend", form.backend, kovexy.config.backends.map { it.name to it.name }.ifEmpty { listOf("" to "No backends yet") })
                     checkField("Strip the path prefix", "stripPrefix", form.stripPrefix, "/api/users reaches the backend as /users")
                 }
                 fieldSet("target-fields target-static") {
-                    legend { +"Static files" }
-                    textField("Directory", "root", form.root, hint = "Absolute, or relative to the data directory.", required = false)
+                    legend { +t("Static files") }
+                    textField("Directory", "root", form.root, hint = t("Absolute, or relative to the data directory."), required = false)
                     checkField("List directories without index file", "directoryListing", form.directoryListing, "off is safer")
                 }
                 fieldSet("target-fields target-redirect") {
-                    legend { +"Redirect" }
+                    legend { +t("Redirect") }
                     textField("Target URL", "url", form.url, placeholder = "https://example.com", required = false, help = "redirectUrl")
                     selectField("Status", "redirectStatus", form.redirectStatus, listOf("307" to "307 temporary", "301" to "301 permanent"))
                     checkField("Keep the path and query", "keepPath", form.keepPath, "/old/page?x=1 goes to <url>/page?x=1")
                 }
                 fieldSet("target-fields target-deny") {
-                    legend { +"Block" }
+                    legend { +t("Block") }
                     textField("Status code", "denyStatus", form.denyStatus, required = false, type = kotlinx.html.InputType.number)
-                    textAreaField("Own HTML page", "html", form.html, rows = 4, hint = "Optional, otherwise a neutral page.")
+                    textAreaField("Own HTML page", "html", form.html, rows = 4, hint = t("Optional, otherwise a neutral page."))
                 }
                 val headerCount = form.requestHeaders.lines().count { it.isNotBlank() } + form.responseHeaders.lines().count { it.isNotBlank() }
-                fold("Headers", if (headerCount == 0) "none" else "$headerCount rules", open = headerCount > 0 || problems.isNotEmpty()) {
-                    textAreaField("Request headers to the backend", "requestHeaders", form.requestHeaders, rows = 3, hint = "One per line: set Name: value, add Name: value, remove Name")
-                    textAreaField("Response headers to the visitor", "responseHeaders", form.responseHeaders, rows = 4, hint = "Same format. Remove only works for backend answers.")
+                fold("Headers", if (headerCount == 0) "none" else t("{0} rules", headerCount), open = headerCount > 0 || problems.isNotEmpty()) {
+                    textAreaField("Request headers to the backend", "requestHeaders", form.requestHeaders, rows = 3, hint = t("One per line: set Name: value, add Name: value, remove Name"))
+                    textAreaField("Response headers to the visitor", "responseHeaders", form.responseHeaders, rows = 4, hint = t("Same format. Remove only works for backend answers."))
                 }
                 div("btn-row sticky-save") {
                     submit("Save route", name = "action", value = "save")
@@ -418,7 +419,7 @@ private suspend fun ApplicationCall.routeForm(kovexy: Kovexy, domain: Int, index
             }
         }
         if (index != null) card("Delete route", "danger gap-top") {
-            postButton("/domains/$domain/routes/$index/delete", "Delete route", "danger", confirm = "Delete this route?", hidden = mapOf("version" to version))
+            postButton("/domains/$domain/routes/$index/delete", "Delete route", "danger", confirm = t("Delete this route?"), hidden = mapOf("version" to version))
         }
     }
 }

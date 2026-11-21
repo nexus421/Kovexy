@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.formatTimestamp
 import bayern.kickner.kovexy.access.BlockKind
@@ -41,7 +42,7 @@ private val EXPIRY_WARNING = 14.days
 fun Route.statusRoutes(kovexy: Kovexy) {
     get("/") {
         call.page("Status", call.session, Nav.STATUS, htmx = true) {
-            pageHeader("Status", "Overview of domains, backends and certificates. Updates every ${LIVE_INTERVAL.inWholeSeconds} seconds.")
+            pageHeader("Status", t("Overview of domains, backends and certificates. Updates every {0} seconds.", LIVE_INTERVAL.inWholeSeconds))
             div {
                 attributes["hx-ext"] = "sse"
                 attributes["sse-connect"] = "/status/events"
@@ -92,22 +93,22 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
     div("columns gap-top") {
         card("Backends") {
             val groups = kovexy.backends.all()
-            if (groups.isEmpty()) p("muted") { +"No backends yet." }
+            if (groups.isEmpty()) p("muted") { +t("No backends yet.") }
             else div("table-wrap") {
                 table("stack-mobile") {
-                    thead { tr { th { +"Server" }; th { +"Backend" }; th { +"State" }; th(classes = "num") { +"Active" } } }
+                    thead { tr { th { +t("Server") }; th { +t("Backend") }; th { +t("State") }; th(classes = "num") { +t("Active") } } }
                     tbody {
                         groups.forEach { group ->
                             group.servers.forEach { server ->
                                 tr {
-                                    td { attributes["data-label"] = "Server"; +server.address.toString() }
-                                    td { attributes["data-label"] = "Backend"; a(href = "/backends/${urlPart(group.config.name)}") { +group.config.name } }
+                                    td { attributes["data-label"] = t("Server"); +server.address.toString() }
+                                    td { attributes["data-label"] = t("Backend"); a(href = "/backends/${urlPart(group.config.name)}") { +group.config.name } }
                                     td {
-                                        attributes["data-label"] = "State"
+                                        attributes["data-label"] = t("State")
                                         if (server.healthy) pill("ok", "up") else pill("error", "down")
                                         server.lastError?.let { span("muted small") { +" $it" } }
                                     }
-                                    td("num") { attributes["data-label"] = "Active"; +server.active.get().toString() }
+                                    td("num") { attributes["data-label"] = t("Active"); +server.active.get().toString() }
                                 }
                             }
                         }
@@ -116,19 +117,19 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
             }
         }
         card("Certificates") {
-            if (certs.isEmpty()) p("muted") { +"No domain yet." }
+            if (certs.isEmpty()) p("muted") { +t("No domain yet.") }
             else div("table-wrap") {
                 table("stack-mobile") {
-                    thead { tr { th { +"Domain" }; th { +"State" }; th { +"Valid until" } } }
+                    thead { tr { th { +t("Domain") }; th { +t("State") }; th { +t("Valid until") } } }
                     tbody {
                         certs.forEach { cert ->
                             tr {
-                                td { attributes["data-label"] = "Domain"; +cert.domain }
+                                td { attributes["data-label"] = t("Domain"); +cert.domain }
                                 td {
-                                    attributes["data-label"] = "State"
+                                    attributes["data-label"] = t("State")
                                     certificatePill(cert, now)
                                 }
-                                td("nowrap") { attributes["data-label"] = "Valid until"; +(cert.notAfter?.let(::formatTimestamp) ?: "-") }
+                                td("nowrap") { attributes["data-label"] = t("Valid until"); +(cert.notAfter?.let(::formatTimestamp) ?: "-") }
                             }
                         }
                     }
@@ -139,7 +140,7 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
 
     card("Blocked today", "gap-top") {
         val reasons = kovexy.storage.topLists(today, null, 20)[TopKind.BLOCK_KIND].orEmpty()
-        if (reasons.isEmpty()) p("muted") { +"Nothing was blocked today." }
+        if (reasons.isEmpty()) p("muted") { +t("Nothing was blocked today.") }
         else table("top-list") {
             tbody {
                 reasons.forEach { (key, count) ->
@@ -158,16 +159,16 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
                 .orderBy(AccessLogTable.id, SortOrder.DESC).limit(8)
                 .map { Triple(it[AccessLogTable.time], "${it[AccessLogTable.status]} ${it[AccessLogTable.method]} ${it[AccessLogTable.host]}${it[AccessLogTable.path]}", it[AccessLogTable.reason]) }
         }
-        if (latest.isEmpty()) p("muted") { +"No 5xx answers in the access log." }
+        if (latest.isEmpty()) p("muted") { +t("No 5xx answers in the access log.") }
         else div("table-wrap") {
             table("stack-mobile") {
-                thead { tr { th { +"Time" }; th { +"Request" }; th { +"Reason" } } }
+                thead { tr { th { +t("Time") }; th { +t("Request") }; th { +t("Reason") } } }
                 tbody {
                     latest.forEach { (time, request, reason) ->
                         tr {
-                            td("nowrap") { attributes["data-label"] = "Time"; +formatTimestamp(time) }
-                            td { attributes["data-label"] = "Request"; span("break") { +request } }
-                            td { attributes["data-label"] = "Reason"; +reason }
+                            td("nowrap") { attributes["data-label"] = t("Time"); +formatTimestamp(time) }
+                            td { attributes["data-label"] = t("Request"); span("break") { +request } }
+                            td { attributes["data-label"] = t("Reason"); +reason }
                         }
                     }
                 }
@@ -175,9 +176,9 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
         }
     }
     p("muted small") {
-        +"Running since ${formatTimestamp(kovexy.startedAt)}."
+        +t("Running since {0}.", formatTimestamp(kovexy.startedAt))
         val dropped = kovexy.accessLog.dropped.get()
-        if (dropped > 0) +" $dropped access log records were dropped because the database could not keep up."
+        if (dropped > 0) +t(" {0} access log records were dropped because the database could not keep up.", dropped)
     }
 }
 
@@ -195,10 +196,10 @@ fun FlowContent.certificatePill(cert: bayern.kickner.kovexy.tls.CertificateStatu
 }
 
 /** Display name of a stored [BlockKind] name, the name itself for one that does not exist any more. */
-fun blockLabel(key: String): String = BlockKind.entries.firstOrNull { it.name == key }?.label ?: key
+fun blockLabel(key: String): String = t(BlockKind.entries.firstOrNull { it.name == key }?.label ?: key)
 
 /** Display name of a statistics site key. */
-fun domainLabel(key: String): String = if (key == FALLBACK_KEY) "Fallback" else key
+fun domainLabel(key: String): String = if (key == FALLBACK_KEY) t("Fallback") else key
 
 /** Encodes a name for a URL path segment. */
 fun urlPart(name: String): String = java.net.URLEncoder.encode(name, Charsets.UTF_8).replace("+", "%20")

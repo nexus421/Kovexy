@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -106,7 +107,7 @@ fun chartSvg(buckets: List<Long>, series: List<Series>, stacked: Boolean, hourly
         val swatch = if (stacked) """<rect class="${s.cssClass}" x="$x" y="${HEIGHT + 6}" width="12" height="10"/>"""
         else """<line class="${s.cssClass}" x1="$x" x2="${x + 14}" y1="${HEIGHT + 11}" y2="${HEIGHT + 11}"/>"""
         out.append(swatch)
-        out.append("""<text class="legend" x="${x + 18}" y="${HEIGHT + 16}">${esc(s.label)}</text>""")
+        out.append("""<text class="legend" x="${x + 18}" y="${HEIGHT + 16}">${esc(t(s.label))}</text>""")
         x += 30 + s.label.length * 7
     }
     out.append("</svg>")

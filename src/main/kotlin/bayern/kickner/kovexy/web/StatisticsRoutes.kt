@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.formatTimestamp
 import bayern.kickner.kovexy.stats.sumHistograms
@@ -53,7 +54,7 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
         val (buckets, rows) = kovexy.loadRange(range, domain)
         val query = "range=${range.key}" + (domain?.let { "&domain=${urlPart(it)}" } ?: "")
         call.page("Statistics", call.session, Nav.STATISTICS) {
-            pageHeader("Statistics", "Requests, status codes, traffic and response times. Hourly values are kept ${kovexy.config.retention.hourlyStats}, daily values forever.")
+            pageHeader("Statistics", t("Requests, status codes, traffic and response times. Hourly values are kept {0}, daily values forever.", kovexy.config.retention.hourlyStats))
             card {
                 form(action = "/statistics", method = FormMethod.get, classes = "filters") {
                     selectField("Domain", "domain", domain ?: "*", listOf("*" to "All domains") + domains.map { it to domainLabel(it) }, autosubmit = true)
@@ -77,37 +78,37 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                 stat(formatLatencyBound(histogramQuantile(histogram, 0.95)), "95th percentile")
                 stat(formatLatencyBound(histogramQuantile(histogram, 0.99)), "99th percentile")
             }
-            card("Requests by status", "gap-top") { chart("/statistics/chart.svg?metric=requests&$query", "Requests per ${if (range.hourly) "hour" else "day"} by status class") }
+            card("Requests by status", "gap-top") { chart("/statistics/chart.svg?metric=requests&$query", t("Requests per {0} by status class", t(if (range.hourly) "hour" else "day"))) }
             card("Blocked requests", "gap-top") {
-                chart("/statistics/chart.svg?metric=blocked&$query", "Requests Kovexy blocked per ${if (range.hourly) "hour" else "day"}")
-                p("muted small") { +"Bans, block and allow lists, exploit filter, AI crawlers, trap paths, rate limits, methods, captcha, failed Basic Auth and malformed requests. The reasons are in the top list \"Blocked by\"." }
+                chart("/statistics/chart.svg?metric=blocked&$query", t("Requests Kovexy blocked per {0}", t(if (range.hourly) "hour" else "day")))
+                p("muted small") { +t("Bans, block and allow lists, exploit filter, AI crawlers, trap paths, rate limits, methods, captcha, failed Basic Auth and malformed requests. The reasons are in the top list \"Blocked by\".") }
             }
             card("Response time", "gap-top") { chart("/statistics/chart.svg?metric=duration&$query", "Mean and highest response time") }
             card("Response time percentiles", "gap-top") {
                 chart("/statistics/chart.svg?metric=percentiles&$query", "Median, 95th and 99th percentile of the response time")
-                p("muted small") { +"Values are the upper bound of a bucket: ≤ 150 ms means between 100 and 150 ms. Times above 60 s show as 60 s in the chart. Kept as long as the hourly values." }
+                p("muted small") { +t("Values are the upper bound of a bucket: ≤ 150 ms means between 100 and 150 ms. Times above 60 s show as 60 s in the chart. Kept as long as the hourly values.") }
             }
             card("Traffic", "gap-top") { chart("/statistics/chart.svg?metric=traffic&$query", "Bytes received and sent") }
             card("Per domain", "gap-top") {
                 val perDomain = totals.groupBy { it.domain }
-                if (perDomain.isEmpty()) p("muted") { +"No requests in this range." }
+                if (perDomain.isEmpty()) p("muted") { +t("No requests in this range.") }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Domain" }; th(classes = "num") { +"Requests" }; th(classes = "num") { +"2xx" }; th(classes = "num") { +"3xx" }; th(classes = "num") { +"4xx" }; th(classes = "num") { +"5xx" }; th(classes = "num") { +"Blocked" }; th(classes = "num") { +"Sent" }; th(classes = "num") { +"Mean" }; th(classes = "num") { +"Max" } } }
+                        thead { tr { th { +t("Domain") }; th(classes = "num") { +t("Requests") }; th(classes = "num") { +t("2xx") }; th(classes = "num") { +t("3xx") }; th(classes = "num") { +t("4xx") }; th(classes = "num") { +t("5xx") }; th(classes = "num") { +t("Blocked") }; th(classes = "num") { +t("Sent") }; th(classes = "num") { +t("Mean") }; th(classes = "num") { +t("Max") } } }
                         tbody {
                             perDomain.entries.sortedByDescending { e -> e.value.sumOf { it.requests } }.forEach { (key, list) ->
                                 val requests = list.sumOf { it.requests }
                                 tr {
-                                    td { attributes["data-label"] = "Domain"; +domainLabel(key) }
-                                    td("num") { attributes["data-label"] = "Requests"; +requests.toString() }
-                                    td("num") { attributes["data-label"] = "2xx"; +list.sumOf { it.status2xx }.toString() }
-                                    td("num") { attributes["data-label"] = "3xx"; +list.sumOf { it.status3xx }.toString() }
-                                    td("num") { attributes["data-label"] = "4xx"; +list.sumOf { it.status4xx }.toString() }
-                                    td("num") { attributes["data-label"] = "5xx"; +list.sumOf { it.status5xx }.toString() }
-                                    td("num") { attributes["data-label"] = "Blocked"; +list.sumOf { it.blocked }.toString() }
-                                    td("num") { attributes["data-label"] = "Sent"; +bytes(list.sumOf { it.bytesOut }) }
-                                    td("num") { attributes["data-label"] = "Mean"; +"${if (requests == 0L) 0 else list.sumOf { it.durationSum } / requests} ms" }
-                                    td("num") { attributes["data-label"] = "Max"; +"${list.maxOfOrNull { it.durationMax } ?: 0} ms" }
+                                    td { attributes["data-label"] = t("Domain"); +domainLabel(key) }
+                                    td("num") { attributes["data-label"] = t("Requests"); +requests.toString() }
+                                    td("num") { attributes["data-label"] = t("2xx"); +list.sumOf { it.status2xx }.toString() }
+                                    td("num") { attributes["data-label"] = t("3xx"); +list.sumOf { it.status3xx }.toString() }
+                                    td("num") { attributes["data-label"] = t("4xx"); +list.sumOf { it.status4xx }.toString() }
+                                    td("num") { attributes["data-label"] = t("5xx"); +list.sumOf { it.status5xx }.toString() }
+                                    td("num") { attributes["data-label"] = t("Blocked"); +list.sumOf { it.blocked }.toString() }
+                                    td("num") { attributes["data-label"] = t("Sent"); +bytes(list.sumOf { it.bytesOut }) }
+                                    td("num") { attributes["data-label"] = t("Mean"); +t("{0} ms", if (requests == 0L) 0 else list.sumOf { it.durationSum } / requests) }
+                                    td("num") { attributes["data-label"] = t("Max"); +t("{0} ms", list.maxOfOrNull { it.durationMax } ?: 0) }
                                 }
                             }
                         }
@@ -117,14 +118,14 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
             val tops = kovexy.storage.topLists(kovexy.accessLog.dayStart(buckets.first()), domain)
             card("Top lists", "gap-top") {
                 p("muted small") {
-                    +"Counted per day, whole days from ${formatTimestamp(kovexy.accessLog.dayStart(buckets.first()))} on. Each list keeps the $TOP_LIST_SIZE most frequent entries per domain and day, rare entries may be missing."
+                    +t("Counted per day, whole days from {0} on. Each list keeps the {1} most frequent entries per domain and day, rare entries may be missing.", formatTimestamp(kovexy.accessLog.dayStart(buckets.first())), TOP_LIST_SIZE)
                 }
             }
             div("top-grid gap-top") {
                 TopKind.entries.forEach { kind ->
                     card(kind.label) {
                         val entries = tops[kind].orEmpty()
-                        if (entries.isEmpty()) p("muted") { +"None." }
+                        if (entries.isEmpty()) p("muted") { +t("None.") }
                         else table("top-list") {
                             tbody {
                                 entries.forEach { (key, count) ->
@@ -138,7 +139,7 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                     }
                 }
             }
-            p("muted small gap-top") { +"As of ${formatTimestamp(kovexy.clock())}. New requests show up within a few seconds." }
+            p("muted small gap-top") { +t("As of {0}. New requests show up within a few seconds.", formatTimestamp(kovexy.clock())) }
         }
     }
 

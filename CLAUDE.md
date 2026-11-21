@@ -104,7 +104,8 @@ UI: building blocks (`page`, `pageHeader`, `card`, `fold` for sections that fold
 `static/app.css` (based on Dirl, light and dark through CSS variables, tables stack on phones). The navigation is a
 sidebar with four groups (`Nav` and `NavGroup` in `web/Layout.kt`), on phones a `<details>` menu without
 JavaScript. A new page needs a `Nav` entry in its group. Check new pages in the browser at desktop and phone width.
-Green, yellow and red are kept for status. Every form field gets a help text (the small question mark): add it to
+Green, yellow and red are kept for status. Every text the admin UI shows goes through `t("...")` (or a layout helper that does it) and needs a German entry in
+`src/main/resources/i18n/de.json`, see docs/development.md "Languages of the admin UI". Every form field gets a help text (the small question mark): add it to
 `web/Help.kt`, keyed by the field name. A field whose name another page uses too passes its own key (`help = "route.path"`).
 
 Deliberate deviations from DemoAiProject and Dirl, decided in the concept: Shadow instead of the Ktor Gradle plugin,

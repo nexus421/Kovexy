@@ -1,5 +1,7 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.I18n
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.PASSWORD_ONLY_WARNING
 import bayern.kickner.kovexy.RELEASES_URL
 import bayern.kickner.kovexy.appVersion
@@ -76,27 +78,27 @@ enum class Nav(val label: String, val href: String, val group: NavGroup) {
 /** The grouped navigation with the logout button, the same list in the sidebar and in the phone menu. */
 private fun FlowContent.navigation(active: Nav?) {
     nav("side-nav") {
-        attributes["aria-label"] = "Main"
+        attributes["aria-label"] = t("Main")
         NavGroup.entries.forEach { group ->
             div("nav-group") {
-                div("nav-heading") { +group.label }
+                div("nav-heading") { +t(group.label) }
                 Nav.entries.filter { it.group == group }.forEach { entry ->
                     a(href = entry.href, classes = if (entry == active) "active" else null) {
                         if (entry == active) attributes["aria-current"] = "page"
-                        +entry.label
+                        +t(entry.label)
                     }
                 }
             }
         }
     }
     form(action = "/logout", method = FormMethod.post, classes = "logout") {
-        button(type = ButtonType.submit, classes = "btn ghost sm") { +"Log out" }
+        button(type = ButtonType.submit, classes = "btn ghost sm") { +t("Log out") }
     }
 }
 
 private fun FlowContent.brand() = a(href = "/", classes = "brand") {
     span("logo") { +"K" }
-    +"Kovexy"
+    +t("Kovexy")
 }
 
 /** How a page is framed. */
@@ -112,7 +114,7 @@ enum class PageFrame {
  * Messages shown after a successful POST and redirect. The redirect only carries the key (`?done=domain-saved`), so
  * no text from the URL ever ends up on the page.
  */
-private val flashMessages = mapOf(
+internal val flashMessages = mapOf(
     "domain-saved" to "Domain saved and applied.",
     "domain-deleted" to "Domain deleted.",
     "route-saved" to "Route saved and applied.",
@@ -168,11 +170,12 @@ suspend fun ApplicationCall.page(
     content: FlowContent.() -> Unit,
 ) {
     val kovexy = application.attributes[KovexyKey]
-    val flash = request.queryParameters["done"]?.let { flashMessages[it] }
+    val flash = request.queryParameters["done"]?.let { key -> flashMessages[key]?.let { t(it) } }
     val updates = if (session != null) kovexy.updates else null
     updates?.checkIfDue(kovexy.scope)
     val newer = updates?.available()
     respondHtml(status) {
+        attributes["lang"] = I18n.language
         head {
             meta(charset = "utf-8")
             meta(name = "viewport", content = "width=device-width, initial-scale=1, viewport-fit=cover")
@@ -181,7 +184,7 @@ suspend fun ApplicationCall.page(
             meta(name = "theme-color", content = "#0f1115") { attributes["media"] = "(prefers-color-scheme: dark)" }
             if (htmx) meta(name = "htmx-config", content = HTMX_CONFIG)
             if (refresh != null) meta { httpEquiv = "refresh"; this.content = refresh }
-            title("$title | Kovexy")
+            title("${t(title)} | Kovexy")
             link(rel = "icon", href = "/static/favicon.svg") { attributes["type"] = "image/svg+xml" }
             link(rel = "stylesheet", href = "/static/app.css")
         }
@@ -203,26 +206,26 @@ suspend fun ApplicationCall.page(
                     header("topbar") {
                         brand()
                         details("menu") {
-                            summary("btn sm") { +"Menu" }
+                            summary("btn sm") { +t("Menu") }
                             div("menu-panel") { navigation(nav) }
                         }
                     }
                 } else header("topbar plain") { brand() }
                 div("main-col") {
                     // Not dismissable on purpose: as long as only the password protects the UI, every page says so
-                    if (kovexy.passwordOnly) div("banner") { +PASSWORD_ONLY_WARNING }
+                    if (kovexy.passwordOnly) div("banner") { +t(PASSWORD_ONLY_WARNING) }
                     main("container") {
                         if (flash != null) notice("success", flash)
                         content()
                     }
                     // The version is nobody's business before the login, so pages without a session have no footer
                     if (session != null) footer {
-                        +"Kovexy $appVersion"
+                        +t("Kovexy {0}", appVersion)
                         if (newer != null) {
                             +" · "
                             a(href = "$RELEASES_URL/tag/v$newer") {
                                 attributes["rel"] = "noopener noreferrer"
-                                +"$newer available"
+                                +t("{0} available", newer)
                             }
                         }
                     }
@@ -241,8 +244,8 @@ suspend fun ApplicationCall.page(
 fun FlowContent.pageHeader(title: String, subtitle: String? = null, actions: (DIV.() -> Unit)? = null) =
     div("page-header") {
         div {
-            h1 { +title }
-            if (subtitle != null) p("subtitle") { +subtitle }
+            h1 { +t(title) }
+            if (subtitle != null) p("subtitle") { +t(subtitle) }
         }
         if (actions != null) div("actions") { actions() }
     }
@@ -250,27 +253,27 @@ fun FlowContent.pageHeader(title: String, subtitle: String? = null, actions: (DI
 /** A card with an optional heading. */
 fun FlowContent.card(title: String? = null, classes: String = "", content: DIV.() -> Unit) =
     div("card $classes".trim()) {
-        if (title != null) h2 { +title }
+        if (title != null) h2 { +t(title) }
         content()
     }
 
 /** A message box. [kind] is `success`, `info`, `warn` or `error`. */
-fun FlowContent.notice(kind: String, text: String) = div("notice $kind") { +text }
+fun FlowContent.notice(kind: String, text: String) = div("notice $kind") { +t(text) }
 
 /** An error box listing every problem, e.g. of a rejected config. */
 fun FlowContent.problems(title: String, items: List<String>) = div("notice error") {
     div {
-        +title
+        +t(title)
         ul("problems") { items.forEach { li { +it } } }
     }
 }
 
 /** A colored status pill. [kind] is `ok`, `warn`, `error` or empty for neutral. */
-fun FlowContent.pill(kind: String, text: String) = span("pill $kind".trim()) { +text }
+fun FlowContent.pill(kind: String, text: String) = span("pill $kind".trim()) { +t(text) }
 
 /** A link styled as button. [kind] adds `primary`, `danger`, `ghost` or `sm`. */
 fun FlowContent.linkButton(href: String, label: String, kind: String = "") =
-    a(href = href, classes = "btn $kind".trim()) { +label }
+    a(href = href, classes = "btn $kind".trim()) { +t(label) }
 
 /**
  * A small POST form with a single button, for actions like delete. With [confirm] the browser asks before
@@ -283,9 +286,9 @@ fun FlowContent.postButton(
     confirm: String? = null,
     hidden: Map<String, String> = emptyMap(),
 ) = form(action = action, method = FormMethod.post, classes = "inline") {
-    if (confirm != null) attributes["data-confirm"] = confirm
+    if (confirm != null) attributes["data-confirm"] = t(confirm)
     hidden.forEach { (name, value) -> hiddenInput(name = name) { this.value = value } }
-    button(type = ButtonType.submit, classes = "btn $kind".trim()) { +label }
+    button(type = ButtonType.submit, classes = "btn $kind".trim()) { +t(label) }
 }
 
 private val elementCounter = java.util.concurrent.atomic.AtomicLong()
@@ -303,7 +306,8 @@ fun FlowContent.copyBlock(text: String, commandId: String? = null, template: Str
     }
     button(type = ButtonType.button, classes = "btn sm") {
         attributes["data-copy"] = elementId
-        +"Copy"
+        attributes["data-copied"] = t("Copied")
+        +t("Copy")
     }
 }
 
@@ -313,7 +317,7 @@ fun nextElementId(prefix: String): String = "$prefix-${elementCounter.incrementA
 /** A definition list of label and value pairs. */
 fun FlowContent.keyValues(vararg rows: Pair<String, String>) = dl("kv") {
     rows.forEach { (label, value) ->
-        dt { +label }
+        dt { +t(label) }
         dd { +value }
     }
 }
@@ -329,53 +333,53 @@ fun FlowContent.textField(
     type: InputType = InputType.text,
     help: String? = null,
 ) = label("field") {
-    span { +label; helpButton(help ?: name, label) }
+    span { +t(label); helpButton(help ?: name, label) }
     input(type = type, name = name) {
         this.value = value
         this.required = required
-        attributes["aria-label"] = label
-        if (placeholder != null) this.placeholder = placeholder
+        attributes["aria-label"] = t(label)
+        if (placeholder != null) this.placeholder = t(placeholder)
         attributes["autocomplete"] = "off"
         attributes["spellcheck"] = "false"
     }
-    if (hint != null) span("hint") { +hint }
+    if (hint != null) span("hint") { +t(hint) }
 }
 
 /** A labeled password input. */
 fun FlowContent.passwordField(label: String, name: String, autocomplete: String, hint: String? = null) = label("field") {
-    span { +label }
+    span { +t(label) }
     input(type = InputType.password, name = name) {
         required = true
-        attributes["aria-label"] = label
+        attributes["aria-label"] = t(label)
         attributes["autocomplete"] = autocomplete
     }
-    if (hint != null) span("hint") { +hint }
+    if (hint != null) span("hint") { +t(hint) }
 }
 
 /** A labeled multi-line input. */
 fun FlowContent.textAreaField(label: String, name: String, value: String = "", rows: Int = 4, hint: String? = null, required: Boolean = false, help: String? = null) =
     label("field") {
-        span { +label; helpButton(help ?: name, label) }
+        span { +t(label); helpButton(help ?: name, label) }
         textArea(rows = rows.toString()) {
             this.name = name
             this.required = required
-            attributes["aria-label"] = label
+            attributes["aria-label"] = t(label)
             attributes["spellcheck"] = "false"
             attributes["autocomplete"] = "off"
             +value
         }
-        if (hint != null) span("hint") { +hint }
+        if (hint != null) span("hint") { +t(hint) }
     }
 
 /** A checkbox with its label text. */
 fun FlowContent.checkField(label: String, name: String, checked: Boolean, hint: String? = null, help: String? = null) = label("check") {
     checkBoxInput(name = name) { this.checked = checked }
     span {
-        +label
+        +t(label)
         helpButton(help ?: name, label)
         if (hint != null) {
             +" "
-            span("hint muted small") { +hint }
+            span("hint muted small") { +t(hint) }
         }
     }
 }
@@ -383,7 +387,7 @@ fun FlowContent.checkField(label: String, name: String, checked: Boolean, hint: 
 /** A labeled select. [options] are value to label. */
 fun FlowContent.selectField(label: String, name: String, selected: String, options: List<Pair<String, String>>, hint: String? = null, autosubmit: Boolean = false, help: String? = null) =
     label("field") {
-        span { +label; helpButton(help ?: name, label) }
+        span { +t(label); helpButton(help ?: name, label) }
         select {
             this.name = name
             if (autosubmit) attributes["data-autosubmit"] = ""
@@ -391,11 +395,11 @@ fun FlowContent.selectField(label: String, name: String, selected: String, optio
                 option {
                     this.value = value
                     this.selected = value == selected
-                    +text
+                    +t(text)
                 }
             }
         }
-        if (hint != null) span("hint") { +hint }
+        if (hint != null) span("hint") { +t(hint) }
     }
 
 /** A plain primary submit button. */
@@ -403,7 +407,7 @@ fun FlowContent.submit(label: String, kind: String = "primary", name: String? = 
     button(type = ButtonType.submit, classes = "btn $kind".trim()) {
         if (name != null) this.name = name
         if (value != null) this.value = value
-        +label
+        +t(label)
     }
 
 /** The hidden field with the config version a form is based on, see [bayern.kickner.kovexy.config.LoadedConfig]. */
@@ -413,10 +417,10 @@ fun FlowContent.versionField(version: String) = hiddenInput(name = "version") { 
 fun FlowContent.stat(value: String, label: String, href: String? = null) {
     if (href == null) div("stat") {
         div("value") { +value }
-        div("label") { +label }
+        div("label") { +t(label) }
     } else a(href = href, classes = "stat") {
         div("value") { +value }
-        div("label") { +label }
+        div("label") { +t(label) }
     }
 }
 
@@ -429,8 +433,8 @@ fun FlowContent.fold(title: String, state: String? = null, open: Boolean = false
     details("fold") {
         if (open) attributes["open"] = "open"
         summary("fold-title") {
-            span("fold-name") { +title }
-            if (state != null) span("fold-state") { +state }
+            span("fold-name") { +t(title) }
+            if (state != null) span("fold-state") { +t(state) }
         }
         div("fold-body") { content() }
     }

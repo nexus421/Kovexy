@@ -1,5 +1,7 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.I18n
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.auth.RECOMMENDED_PASSWORD_LENGTH
 import bayern.kickner.kovexy.auth.hashBcrypt
@@ -60,10 +62,13 @@ private const val EMPTY_USER_ROWS = 2
 /** HTTP methods offered as checkboxes. */
 private val METHODS = listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 
-/** Every ISO country with its English name, sorted by name, for the country selects. */
-private val COUNTRIES: List<Pair<String, String>> = Locale.getISOCountries()
-    .map { it to Locale.of("", it).getDisplayCountry(Locale.ENGLISH) }
-    .sortedBy { it.second }
+/** Every ISO country with its name in the language of the admin UI, sorted by name, for the country selects. */
+private fun countries(): List<Pair<String, String>> = countryCache.getOrPut(I18n.language) {
+    val locale = Locale.forLanguageTag(I18n.language)
+    Locale.getISOCountries().map { it to Locale.of("", it).getDisplayCountry(locale) }.sortedBy { it.second }
+}
+
+private val countryCache = java.util.concurrent.ConcurrentHashMap<String, List<Pair<String, String>>>()
 
 /** Access profiles, like Zoraxy's "Access Control". */
 fun Route.accessRoutes(kovexy: Kovexy) {
@@ -132,16 +137,16 @@ private suspend fun ApplicationCall.accessPage(kovexy: Kovexy, problems: List<St
         }
         if (problems.isNotEmpty()) problems("Not saved:", problems)
         card {
-            if (config.accessProfiles.isEmpty()) p("muted") { +"No access profiles yet." }
+            if (config.accessProfiles.isEmpty()) p("muted") { +t("No access profiles yet.") }
             else div("table-wrap") {
                 table("stack-mobile") {
-                    thead { tr { th { +"Profile" }; th { +"Rules" }; th { +"Used by" }; th { } } }
+                    thead { tr { th { +t("Profile") }; th { +t("Rules") }; th { +t("Used by") }; th { } } }
                     tbody {
                         config.accessProfiles.forEach { profile ->
                             tr {
-                                td { attributes["data-label"] = "Profile"; a(href = "/access/${urlPart(profile.name)}") { +profile.name } }
-                                td { attributes["data-label"] = "Rules"; +profileSummary(profile) }
-                                td { attributes["data-label"] = "Used by"; +usedBy(config, profile.name).ifEmpty { listOf("nothing") }.joinToString(", ") }
+                                td { attributes["data-label"] = t("Profile"); a(href = "/access/${urlPart(profile.name)}") { +profile.name } }
+                                td { attributes["data-label"] = t("Rules"); +profileSummary(profile) }
+                                td { attributes["data-label"] = t("Used by"); +usedBy(config, profile.name).ifEmpty { listOf("nothing") }.joinToString(", ") }
                                 td("actions") { linkButton("/access/${urlPart(profile.name)}", "Edit", "sm") }
                             }
                         }
@@ -151,26 +156,26 @@ private suspend fun ApplicationCall.accessPage(kovexy: Kovexy, problems: List<St
         }
         card("Country data", "gap-top") {
             when {
-                geo.loaded -> p { +"${geo.rows} IP ranges loaded, data from ${geo.updatedAt?.let(::formatTimestamp) ?: "-"}. Checked daily against sapics/ip-location-db (user-country, PDDL)." }
-                else -> notice("warn", "Country rules have no effect yet: no country data is loaded. ${geo.lastError ?: "The download is running."}")
+                geo.loaded -> p { +t("{0} IP ranges loaded, data from {1}. Checked daily against sapics/ip-location-db (user-country, PDDL).", geo.rows, geo.updatedAt?.let(::formatTimestamp) ?: "-") }
+                else -> notice("warn", t("Country rules have no effect yet: no country data is loaded. {0}", geo.lastError ?: "The download is running."))
             }
-            geo.lastError?.takeIf { geo.loaded }?.let { p("muted small") { +"Last check failed: $it. The old data stays in use." } }
+            geo.lastError?.takeIf { geo.loaded }?.let { p("muted small") { +t("Last check failed: {0}. The old data stays in use.", it) } }
         }
         card("AI crawlers", "gap-top") {
             val shipped = shippedAiBotNames
             p("muted small") {
-                +"Profiles with \"Block AI crawlers\" use the list of ai.robots.txt (${shipped.size} names, updated with every Kovexy release) and these changes. A name counts when it appears anywhere in the user agent, upper or lower case does not matter."
+                +t("Profiles with \"Block AI crawlers\" use the list of ai.robots.txt ({0} names, updated with every Kovexy release) and these changes. A name counts when it appears anywhere in the user agent, upper or lower case does not matter.", shipped.size)
             }
             form(action = "/access/ai-crawlers", method = FormMethod.post, classes = "form") {
                 versionField(version)
                 div("grid-2") {
-                    textAreaField("Also block", "add", config.aiCrawlers.add.joinToString("\n"), rows = 4, hint = "One user agent part per line, e.g. MyScraper")
-                    textAreaField("Do not block", "ignore", config.aiCrawlers.ignore.joinToString("\n"), rows = 4, hint = "Names from the list below, one per line")
+                    textAreaField("Also block", "add", config.aiCrawlers.add.joinToString("\n"), rows = 4, hint = t("One user agent part per line, e.g. MyScraper"))
+                    textAreaField("Do not block", "ignore", config.aiCrawlers.ignore.joinToString("\n"), rows = 4, hint = t("Names from the list below, one per line"))
                 }
                 div("btn-row") { submit("Save AI crawler list") }
             }
             details("gap-top") {
-                summary { +"Shipped list (${shipped.size})" }
+                summary { +t("Shipped list ({0})", shipped.size) }
                 val ignored = config.aiCrawlers.ignore.map { it.trim().lowercase() }.toSet()
                 p("small break") {
                     shipped.forEachIndexed { i, name ->
@@ -188,16 +193,16 @@ private fun entries(text: String?): List<String> = text.orEmpty().lines().map { 
 
 /** Short list of what a profile does. */
 private fun profileSummary(p: AccessProfile): String = buildList {
-    if (p.denyIps.isNotEmpty() || p.denyCountries.isNotEmpty()) add("block list")
-    if (p.allowIps.isNotEmpty() || p.allowCountries.isNotEmpty()) add("allow list")
-    if (p.exploitFilter.commonExploits) add("exploit filter")
-    if (p.exploitFilter.aiBots) add("AI crawlers")
-    if (p.trapPaths.enabled) add("trap paths")
-    p.rateLimit?.let { add("${it.requestsPerSecond} req/s") }
+    if (p.denyIps.isNotEmpty() || p.denyCountries.isNotEmpty()) add(t("block list"))
+    if (p.allowIps.isNotEmpty() || p.allowCountries.isNotEmpty()) add(t("allow list"))
+    if (p.exploitFilter.commonExploits) add(t("exploit filter"))
+    if (p.exploitFilter.aiBots) add(t("AI crawlers"))
+    if (p.trapPaths.enabled) add(t("trap paths"))
+    p.rateLimit?.let { add(t("{0} req/s", it.requestsPerSecond)) }
     if (p.allowedMethods.isNotEmpty()) add(p.allowedMethods.joinToString("/"))
     if (p.captcha != null) add("reCAPTCHA")
     if (p.basicAuth != null) add("Basic Auth")
-}.ifEmpty { listOf("no rules") }.joinToString(", ")
+}.ifEmpty { listOf(t("no rules")) }.joinToString(", ")
 
 /** Domains and routes that use the profile [name]. */
 private fun usedBy(config: KovexyConfig, name: String): List<String> = config.domains.flatMap { domain ->
@@ -316,7 +321,7 @@ private fun exceptionsText(list: List<BasicAuthException>) = list.joinToString("
 
 private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, profile: AccessProfile, problems: List<String>, posted: String?) {
     val version = posted ?: kovexy.configStore.current.version
-    val title = if (name == null) "Add access profile" else "Access profile $name"
+    val title = if (name == null) "Add access profile" else t("Access profile {0}", name)
     val action = if (name == null) "/access/new" else "/access/${urlPart(name)}"
     val users = profile.basicAuth?.users.orEmpty()
     // Users whose password is not stored yet, after a refused save the password has to be typed again
@@ -329,14 +334,14 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
         card {
             form(action = action, method = FormMethod.post, classes = "form") {
                 versionField(version)
-                textField("Name", "name", profile.name, help = "profile.name", hint = "Domains and routes refer to the profile by this name. Renaming updates them.")
-                fold("Block list", (profile.denyIps.size + profile.denyCountries.size).let { if (it == 0) "empty" else "$it entries" }, open = problems.isNotEmpty()) {
-                    p("muted small") { +"Matching visitors get 403. Countries only count when the country of the IP is known." }
-                    textAreaField("IPs and ranges", "denyIps", profile.denyIps.joinToString("\n"), rows = 2, hint = "One per line, e.g. 203.0.113.7 or 198.51.100.0/24")
+                textField("Name", "name", profile.name, help = "profile.name", hint = t("Domains and routes refer to the profile by this name. Renaming updates them."))
+                fold("Block list", (profile.denyIps.size + profile.denyCountries.size).let { if (it == 0) "empty" else t("{0} entries", it) }, open = problems.isNotEmpty()) {
+                    p("muted small") { +t("Matching visitors get 403. Countries only count when the country of the IP is known.") }
+                    textAreaField("IPs and ranges", "denyIps", profile.denyIps.joinToString("\n"), rows = 2, hint = t("One per line, e.g. 203.0.113.7 or 198.51.100.0/24"))
                     countrySelect("Countries", "denyCountries", profile.denyCountries)
                 }
-                fold("Allow list", (profile.allowIps.size + profile.allowCountries.size).let { if (it == 0) "empty" else "$it entries" }, open = problems.isNotEmpty()) {
-                    p("muted small") { +"If one of the lists is filled, only matching visitors get in. An IP whose country is unknown gets in when only countries are listed." }
+                fold("Allow list", (profile.allowIps.size + profile.allowCountries.size).let { if (it == 0) "empty" else t("{0} entries", it) }, open = problems.isNotEmpty()) {
+                    p("muted small") { +t("If one of the lists is filled, only matching visitors get in. An IP whose country is unknown gets in when only countries are listed.") }
                     textAreaField("IPs and ranges", "allowIps", profile.allowIps.joinToString("\n"), rows = 2)
                     countrySelect("Countries", "allowCountries", profile.allowCountries)
                     checkField("Always allow private and loopback addresses", "allowLocal", profile.allowLocal)
@@ -351,85 +356,85 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                 fold("Trap paths", if (profile.trapPaths.enabled) "on" else "off", open = problems.isNotEmpty()) {
                     checkField("Ban whoever calls a trap path", "trapsEnabled", profile.trapPaths.enabled, "the ban counts for all domains")
                     textAreaField("Paths", "trapPaths", profile.trapPaths.paths.joinToString("\n"), rows = 5,
-                        hint = "Path prefixes, one per line. A route with match exact for exactly that path still works. Default: ${DEFAULT_TRAP_PATHS.size} typical scanner targets.")
+                        hint = t("Path prefixes, one per line. A route with match exact for exactly that path still works. Default: {0} typical scanner targets.", DEFAULT_TRAP_PATHS.size))
                     textField("Ban duration", "banDuration", profile.trapPaths.banDuration.toString())
                 }
-                fold("Rate limit", profile.rateLimit?.let { "${it.requestsPerSecond} per second" } ?: "off", open = problems.isNotEmpty()) {
+                fold("Rate limit", profile.rateLimit?.let { t("{0} per second", it.requestsPerSecond) } ?: "off", open = problems.isNotEmpty()) {
                     checkField("Limit requests per IP", "rateEnabled", profile.rateLimit != null, "more get 429")
                     div("grid-2") {
                         textField("Requests per second", "rps", (profile.rateLimit?.requestsPerSecond ?: 20).toString(), type = InputType.number, required = false)
                         textField("IPv6 prefix", "ipv6Prefix", (profile.rateLimit?.ipv6Prefix ?: 64).toString(), type = InputType.number, required = false,
-                            hint = "IPv6 addresses count per prefix, a household usually has a whole /64.")
+                            hint = t("IPv6 addresses count per prefix, a household usually has a whole /64."))
                     }
                 }
                 fold("Allowed methods", if (profile.allowedMethods.isEmpty()) "all" else profile.allowedMethods.joinToString(", "), open = problems.isNotEmpty()) {
-                    p("muted small") { +"All ticked means all methods are allowed. Others get 405." }
+                    p("muted small") { +t("All ticked means all methods are allowed. Others get 405.") }
                     div("btn-row") {
                         METHODS.forEach { method -> checkField(method, "method.$method", profile.allowedMethods.isEmpty() || method in profile.allowedMethods) }
                     }
                 }
-                fold("Basic Auth", if (profile.basicAuth == null) "off" else "on, ${users.size} users", open = problems.isNotEmpty()) {
+                fold("Basic Auth", if (profile.basicAuth == null) "off" else t("on, {0} users", users.size), open = problems.isNotEmpty()) {
                     checkField("Require a login", "basicEnabled", profile.basicAuth != null, "passwords are stored as bcrypt hash")
                     textField("Realm", "realm", profile.basicAuth?.realm ?: "Restricted", required = false)
                     hiddenInput(name = "userCount") { value = (users.size + EMPTY_USER_ROWS).toString() }
                     div("table-wrap") {
                         table("stack-mobile") {
-                            thead { tr { th { +"User" }; th { +"Password" }; th { +"Remove" } } }
+                            thead { tr { th { +t("User") }; th { +t("Password") }; th { +t("Remove") } } }
                             tbody {
                                 (users.map { it.name } + List(EMPTY_USER_ROWS) { "" }).forEachIndexed { k, user ->
                                     tr {
                                         td {
-                                            attributes["data-label"] = "User"
+                                            attributes["data-label"] = t("User")
                                             hiddenInput(name = "u$k.previous") { value = user }
-                                            input(InputType.text, name = "u$k.name") { value = user; attributes["aria-label"] = "User name"; attributes["autocomplete"] = "off" }
+                                            input(InputType.text, name = "u$k.name") { value = user; attributes["aria-label"] = t("User name"); attributes["autocomplete"] = "off" }
                                         }
                                         td {
-                                            attributes["data-label"] = "Password"
+                                            attributes["data-label"] = t("Password")
                                             input(InputType.password, name = "u$k.password") {
-                                                attributes["aria-label"] = "Password"
+                                                attributes["aria-label"] = t("Password")
                                                 attributes["autocomplete"] = "new-password"
-                                                placeholder = if (user.isEmpty() || user in newUsers) "new password" else "unchanged"
+                                                placeholder = if (user.isEmpty() || user in newUsers) t("new password") else t("unchanged")
                                             }
                                         }
-                                        td { attributes["data-label"] = "Remove"; if (user.isNotEmpty()) checkBoxInput(name = "u$k.delete") { attributes["aria-label"] = "Remove user" } }
+                                        td { attributes["data-label"] = t("Remove"); if (user.isNotEmpty()) checkBoxInput(name = "u$k.delete") { attributes["aria-label"] = t("Remove user") } }
                                     }
                                 }
                             }
                         }
                     }
-                    p("muted small") { +"Any length works, $RECOMMENDED_PASSWORD_LENGTH characters or more are harder to guess." }
+                    p("muted small") { +t("Any length works, {0} characters or more are harder to guess.", RECOMMENDED_PASSWORD_LENGTH) }
                     textAreaField("Exceptions", "exceptions", exceptionsText(profile.basicAuth?.exceptions.orEmpty()),
-                        rows = 2, hint = "No login needed for: path /public or cidr 192.168.1.0/24, one per line.")
+                        rows = 2, hint = t("No login needed for: path /public or cidr 192.168.1.0/24, one per line."))
                 }
                 fold("Captcha", if (profile.captcha == null) "off" else "on", open = problems.isNotEmpty()) {
                     val captcha = profile.captcha
                     checkField("Ask for a Google reCAPTCHA", "captchaEnabled", captcha != null,
                         "visitors see a check page with 403 until they pass it, only on domains that are reachable over HTTPS alone. This sends visitor data to Google")
                     textField("Valid for", "captchaDuration", (captcha?.sessionDuration ?: CaptchaConfig().sessionDuration).toString(), required = false,
-                        hint = "Then the visitor is asked again. Solved captchas live in memory, a restart asks once more.")
+                        hint = t("Then the visitor is asked again. Solved captchas live in memory, a restart asks once more."))
                     textAreaField("Only these paths", "captchaPaths", captcha?.protectedPaths.orEmpty().joinToString("\n"), rows = 2,
-                        hint = "Path prefixes, one per line. Empty protects the whole domain.")
+                        hint = t("Path prefixes, one per line. Empty protects the whole domain."))
                     textAreaField("Exceptions", "captchaExceptions", exceptionsText(captcha?.exceptions.orEmpty()), rows = 2,
-                        hint = "No captcha for: path /api or cidr 192.168.1.0/24, one per line.")
+                        hint = t("No captcha for: path /api or cidr 192.168.1.0/24, one per line."))
                     div("grid-2") {
                         textField("reCAPTCHA site key", "siteKey", captcha?.siteKey.orEmpty(), required = false)
                         label("field") {
-                            span { +"reCAPTCHA secret key"; helpButton("secretKey", "reCAPTCHA secret key") }
+                            span { +t("reCAPTCHA secret key"); helpButton("secretKey", "reCAPTCHA secret key") }
                             input(InputType.password, name = "secretKey") {
                                 attributes["autocomplete"] = "off"
-                                placeholder = if (captcha?.secretKey.isNullOrEmpty()) "secret key" else "unchanged"
+                                placeholder = if (captcha?.secretKey.isNullOrEmpty()) t("secret key") else t("unchanged")
                             }
                         }
                         selectField("reCAPTCHA version", "recaptchaVersion", (captcha?.recaptchaVersion ?: RecaptchaVersion.V2).name, listOf("V2" to "v2 (checkbox)", "V3" to "v3 (invisible, score)"))
-                        textField("Minimum score (v3)", "recaptchaScore", (captcha?.recaptchaScore ?: 0.5).toString(), required = false, hint = "0 to 1, Google suggests 0.5.")
+                        textField("Minimum score (v3)", "recaptchaScore", (captcha?.recaptchaScore ?: 0.5).toString(), required = false, hint = t("0 to 1, Google suggests 0.5."))
                     }
                 }
                 div("btn-row sticky-save") { submit("Save profile") }
             }
         }
         if (name != null) card("Delete profile", "danger gap-top") {
-            p("muted") { +"Only possible while no domain and no route use it." }
-            postButton("$action/delete", "Delete profile", "danger", confirm = "Delete this access profile?", hidden = mapOf("version" to version))
+            p("muted") { +t("Only possible while no domain and no route use it.") }
+            postButton("$action/delete", "Delete profile", "danger", confirm = t("Delete this access profile?"), hidden = mapOf("version" to version))
         }
     }
 }
@@ -442,14 +447,16 @@ private fun FlowContent.countrySelect(label: String, name: String, selected: Lis
     span { +label; helpButton(name, label) }
     div("country-picker") {
         attributes["data-country-picker"] = "true"
+        attributes["data-none"] = t("None selected")
+        attributes["data-selected"] = t("{0} selected: {1}")
         details {
-            summary("country-summary") { +(if (selected.isEmpty()) "None selected" else "${selected.size} selected: ${selected.joinToString(", ")}") }
+            summary("country-summary") { +(if (selected.isEmpty()) t("None selected") else t("{0} selected: {1}", selected.size, selected.joinToString(", "))) }
             input(type = InputType.search, classes = "country-filter") {
-                attributes["placeholder"] = "Filter countries"
-                attributes["aria-label"] = "Filter $label"
+                attributes["placeholder"] = t("Filter countries")
+                attributes["aria-label"] = t("Filter {0}", label)
             }
             div("country-list") {
-                COUNTRIES.forEach { (code, country) ->
+                countries().forEach { (code, country) ->
                     label("check") {
                         checkBoxInput(name = name) {
                             value = code

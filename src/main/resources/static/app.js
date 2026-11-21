@@ -15,7 +15,7 @@
       if (!source || !navigator.clipboard) return;
       navigator.clipboard.writeText(source.textContent).then(function () {
         const label = button.textContent;
-        button.textContent = 'Copied';
+        button.textContent = button.dataset.copied || 'Copied';
         setTimeout(function () { button.textContent = label; }, 1500);
       });
     });
@@ -45,7 +45,7 @@
     const filter = picker.querySelector('input[type=search]');
     function update() {
       const codes = boxes.filter(function (box) { return box.checked; }).map(function (box) { return box.value; });
-      summary.textContent = codes.length ? codes.length + ' selected: ' + codes.join(', ') : 'None selected';
+      summary.textContent = codes.length ? (picker.dataset.selected || '{0} selected: {1}').replace('{0}', codes.length).replace('{1}', codes.join(', ')) : (picker.dataset.none || 'None selected');
     }
     boxes.forEach(function (box) { box.addEventListener('change', update); });
     filter.addEventListener('input', function () {

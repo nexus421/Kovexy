@@ -1,5 +1,7 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.LANGUAGES
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
 import bayern.kickner.kovexy.Kovexy
@@ -94,6 +96,7 @@ fun Route.settingsRoutes(kovexy: Kovexy) {
                 retention = c.retention.copy(accessLog = accessLog!!, hourlyStats = hourly!!, audit = audit!!, securityEvents = securityEvents!!),
                 updateCheck = params["updateCheck"] != null,
                 webSocketCloseDelay = wsDelay!!,
+                language = params["language"].orEmpty().ifEmpty { c.language },
                 limits = LimitsConfig(connect!!, keepAlive!!, clientIdle!!, headerBytes, maxConnections, maxAccepts, maxPerAddress),
             )
         }
@@ -214,7 +217,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                 form(action = "/settings/login", method = FormMethod.post, classes = "form") {
                     versionField(version)
                     fieldSet {
-                        legend { +"Login mode"; helpButton("loginMode", "Login mode") }
+                        legend { +t("Login mode"); helpButton("loginMode", "Login mode") }
                         listOf(
                             LoginMode.PASSWORD to "Password only",
                             LoginMode.OIDC to "OIDC only",
@@ -225,28 +228,28 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                                     value = mode.name
                                     checked = mode.name == v("loginMode", config.admin.loginMode.name)
                                 }
-                                span { +text }
+                                span { +t(text) }
                             }
                         }
-                        p("muted small") { +"OIDC needs the public URL below. In an emergency the command line switches back: java -jar kovexy.jar login-mode=password" }
+                        p("muted small") { +t("OIDC needs the public URL below. In an emergency the command line switches back: java -jar kovexy.jar login-mode=password") }
                     }
                     div("oidc-fields") { fieldSet {
-                        legend { +"OIDC provider" }
+                        legend { +t("OIDC provider") }
                         textField("Issuer", "issuer", v("issuer", oidc?.issuer.orEmpty()), required = false, placeholder = "https://id.example.com",
-                            hint = "Exactly as the provider reports it. Callback URL to register: ${config.admin.publicUrl.ifEmpty { "<public URL>" }}/auth/callback")
+                            hint = t("Exactly as the provider reports it. Callback URL to register: {0}/auth/callback", config.admin.publicUrl.ifEmpty { "<public URL>" }))
                         div("grid-2") {
                             textField("Client ID", "clientId", v("clientId", oidc?.clientId.orEmpty()), required = false)
                             label("field") {
-                                span { +"Client secret"; helpButton("clientSecret", "Client secret") }
+                                span { +t("Client secret"); helpButton("clientSecret", "Client secret") }
                                 input(InputType.password, name = "clientSecret") {
                                     attributes["autocomplete"] = "new-password"
-                                    attributes["aria-label"] = "Client secret"
-                                    placeholder = if (oidc?.clientSecret.isNullOrEmpty()) "" else "unchanged"
+                                    attributes["aria-label"] = t("Client secret")
+                                    placeholder = if (oidc?.clientSecret.isNullOrEmpty()) "" else t("unchanged")
                                 }
                             }
                         }
                         textAreaField("Allowed subjects", "allowedSubjects", v("allowedSubjects", oidc?.allowedSubjects.orEmpty().joinToString("\n")), rows = 2,
-                            hint = "sub claims that may log in, one per line. Empty: everybody the provider lets through, then restrict the client to a group at the provider.")
+                            hint = t("sub claims that may log in, one per line. Empty: everybody the provider lets through, then restrict the client to a group at the provider."))
                         textField("Scopes", "scopes", v("scopes", (oidc?.scopes ?: listOf("openid", "profile")).joinToString(" ")), required = false)
                         checkField("Ask for a fresh sign in every time", "forceReauth", c("forceReauth", "issuer", oidc?.forceReauth ?: true))
                     } }
@@ -256,7 +259,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
             card("Password") {
                 form(action = "/settings/password", method = FormMethod.post, classes = "form") {
                     passwordField("Current password", "current", "current-password")
-                    passwordField("New password", "new", "new-password", hint = "At least $MIN_PASSWORD_LENGTH characters.")
+                    passwordField("New password", "new", "new-password", hint = t("At least {0} characters.", MIN_PASSWORD_LENGTH))
                     passwordField("Repeat new password", "repeat", "new-password")
                     div("btn-row") { submit("Change password") }
                 }
@@ -266,30 +269,31 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                 val sessions = kovexy.sessions.list()
                 div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Since" }; th { +"From" }; th { +"Browser" } } }
+                        thead { tr { th { +t("Since") }; th { +t("From") }; th { +t("Browser") } } }
                         tbody {
                             sessions.forEach { s ->
                                 tr {
-                                    td("nowrap") { attributes["data-label"] = "Since"; +formatTimestamp(s.createdAt) }
-                                    td { attributes["data-label"] = "From"; +s.ip; if (s.id == session.id) span("muted small") { +" (this one)" } }
-                                    td { attributes["data-label"] = "Browser"; span("small break") { attributes["title"] = s.userAgent; +shortUserAgent(s.userAgent) } }
+                                    td("nowrap") { attributes["data-label"] = t("Since"); +formatTimestamp(s.createdAt) }
+                                    td { attributes["data-label"] = t("From"); +s.ip; if (s.id == session.id) span("muted small") { +t(" (this one)") } }
+                                    td { attributes["data-label"] = t("Browser"); span("small break") { attributes["title"] = s.userAgent; +shortUserAgent(s.userAgent) } }
                                 }
                             }
                         }
                     }
                 }
-                div("btn-row gap-top") { postButton("/settings/sessions/end-others", "End all other sessions", "danger", confirm = "End every other session?") }
+                div("btn-row gap-top") { postButton("/settings/sessions/end-others", "End all other sessions", "danger", confirm = t("End every other session?")) }
             }
         card("Server settings", "gap-top") {
             form(action = "/settings", method = FormMethod.post, classes = "form") {
                 versionField(version)
                 fold("Admin UI", "${config.admin.host}:${config.admin.port}", open = problems.isNotEmpty()) {
                     div("grid-2") {
-                        textField("Address", "adminHost", v("adminHost", config.admin.host), hint = "127.0.0.1 keeps it local. Changing it moves the UI at once. Browsers keep the login only on localhost or over HTTPS through the public URL.")
+                        textField("Address", "adminHost", v("adminHost", config.admin.host), hint = t("127.0.0.1 keeps it local. Changing it moves the UI at once. Browsers keep the login only on localhost or over HTTPS through the public URL."))
                         textField("Port", "adminPort", v("adminPort", config.admin.port.toString()), type = InputType.number)
                     }
                     textField("Public URL", "publicUrl", v("publicUrl", config.admin.publicUrl), required = false, placeholder = "https://proxy.example.com",
-                        hint = "When the UI is reached through a domain whose target is 127.0.0.1:${config.admin.port}. Empty for local use only.")
+                        hint = t("When the UI is reached through a domain whose target is 127.0.0.1:{0}. Empty for local use only.", config.admin.port))
+                    selectField("Language", "language", v("language", config.language), LANGUAGES.map { it.key to it.value })
                     div("grid-2") {
                         textField("Session idle timeout", "idleTimeout", v("idleTimeout", config.admin.session.idleTimeout.toString()))
                         textField("Session maximum age", "maxAge", v("maxAge", config.admin.session.maxAge.toString()))
@@ -297,23 +301,23 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                 }
                 fold("Proxy and limits", state = null, open = problems.isNotEmpty()) {
                     textAreaField("Trusted proxies", "trustedProxies", v("trustedProxies", config.trustedProxies.joinToString("\n")), rows = 2,
-                        hint = "IPs or ranges like 192.168.1.0/24 whose X-Forwarded-For is believed. Usually empty.")
+                        hint = t("IPs or ranges like 192.168.1.0/24 whose X-Forwarded-For is believed. Usually empty."))
                     div("grid-2") {
                         textField("Backend connect timeout", "backendConnectTimeout", v("backendConnectTimeout", config.limits.backendConnectTimeout.toString()))
                         textField("Backend keep-alive", "backendKeepAlive", v("backendKeepAlive", config.limits.backendKeepAlive.toString()))
                         textField("Client idle timeout", "clientIdleTimeout", v("clientIdleTimeout", config.limits.clientIdleTimeout.toString()))
                         textField("Request header size (bytes)", "maxRequestHeaderBytes", v("maxRequestHeaderBytes", config.limits.maxRequestHeaderBytes.toString()), type = InputType.number)
                         textField("Maximum connections", "maxConnections", v("maxConnections", config.limits.maxConnections.toString()), type = InputType.number,
-                            hint = "All proxy connections together, 0 is unlimited. Keeps a flood from filling the memory.")
+                            hint = t("All proxy connections together, 0 is unlimited. Keeps a flood from filling the memory."))
                         textField("Connections per address", "maxConnectionsPerAddress", v("maxConnectionsPerAddress", config.limits.maxConnectionsPerAddress.toString()), type = InputType.number,
-                            hint = "Open proxy connections of one address, IPv6 per /64, 0 is unlimited. Loopback and trusted proxies are not limited.")
+                            hint = t("Open proxy connections of one address, IPv6 per /64, 0 is unlimited. Loopback and trusted proxies are not limited."))
                         textField("New connections per second", "maxAcceptsPerSecond", v("maxAcceptsPerSecond", config.limits.maxAcceptsPerSecond.toString()), type = InputType.number,
-                            hint = "0 is off. Shared by everybody, during an attack it locks normal visitors out too.")
+                            hint = t("0 is off. Shared by everybody, during an attack it locks normal visitors out too."))
                         textField("WebSocket close delay", "webSocketCloseDelay", v("webSocketCloseDelay", config.webSocketCloseDelay.toString()),
-                            hint = "Open WebSockets are closed after a config change, after this delay.")
+                            hint = t("Open WebSockets are closed after a config change, after this delay."))
                     }
                 }
-                fold("Data and updates", "keeps the access log ${config.retention.accessLog}", open = problems.isNotEmpty()) {
+                fold("Data and updates", t("keeps the access log {0}", config.retention.accessLog), open = problems.isNotEmpty()) {
                     div("grid-2") {
                         textField("Keep the access log", "retentionAccessLog", v("retentionAccessLog", config.retention.accessLog.toString()))
                         textField("Keep hourly statistics", "retentionHourly", v("retentionHourly", config.retention.hourlyStats.toString()))
@@ -327,18 +331,18 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
         }
         div("columns gap-top") {
             card("Backup") {
-                p("muted") { +"A ZIP with kovexy.json and the certificates. It holds the private keys, keep it safe. It is not encrypted." }
+                p("muted") { +t("A ZIP with kovexy.json and the certificates. It holds the private keys, keep it safe. It is not encrypted.") }
                 form(action = "/settings/backup", method = FormMethod.post, classes = "form") {
                     checkField("Include the database (access log, statistics, sessions)", "database", false)
                     div("btn-row") { submit("Download backup", "") }
                 }
             }
             card("Restore") {
-                p("muted") { +"Replaces the configuration and certificates and applies them at once. The current state is saved in the backups directory first." }
+                p("muted") { +t("Replaces the configuration and certificates and applies them at once. The current state is saved in the backups directory first.") }
                 form(action = "/settings/restore", method = FormMethod.post, encType = FormEncType.multipartFormData, classes = "form") {
-                    attributes["data-confirm"] = "Restore this backup? The current configuration is replaced."
+                    attributes["data-confirm"] = t("Restore this backup? The current configuration is replaced.")
                     label("field") {
-                        span { +"Backup file" }
+                        span { +t("Backup file") }
                         input(InputType.file, name = "backup") { accept = ".zip,application/zip"; required = true }
                     }
                     div("btn-row") { submit("Restore", "danger") }

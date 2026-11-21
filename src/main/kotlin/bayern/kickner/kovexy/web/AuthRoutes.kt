@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
 import bayern.kickner.kovexy.Kovexy
@@ -114,7 +115,7 @@ fun Route.authRoutes(kovexy: Kovexy) {
             }
 
             is ResultOf2.Failure -> {
-                staticLog(KLogger.Level.ERROR, TAG) { "Cannot start the OIDC login: ${start.value}" }
+                staticLog(KLogger.Level.ERROR, TAG) { t("Cannot start the OIDC login: {0}", start.value) }
                 call.loginPage(kovexy, "The identity provider is not reachable. Try again in a moment.", HttpStatusCode.ServiceUnavailable)
             }
         }
@@ -137,7 +138,7 @@ fun Route.authRoutes(kovexy: Kovexy) {
             is ResultOf2.Failure -> {
                 // Busy is nobody's failed login, it is no event and no webhook
                 if (result.value == LoginError.Busy) return@get call.loginPage(kovexy, loginErrorText(result.value), HttpStatusCode.ServiceUnavailable)
-                staticLog(KLogger.Level.WARN, TAG) { "OIDC login failed: ${result.value}" }
+                staticLog(KLogger.Level.WARN, TAG) { t("OIDC login failed: {0}", result.value) }
                 call.failedLogin(kovexy, Actor("unknown", "unknown", call.adminClientIp), "OIDC: ${result.value::class.simpleName}")
                 return@get call.loginPage(kovexy, loginErrorText(result.value), HttpStatusCode.Forbidden)
             }
@@ -157,7 +158,7 @@ fun Route.authRoutes(kovexy: Kovexy) {
             call.response.cookies.append(shortCookie(PENDING_COOKIE, signPending(claims, kovexy.clock() + PENDING_SECONDS * 1000L), PENDING_SECONDS, "Strict"))
             // A same-site refresh, the Strict cookie is not sent on the cross-site navigation from the provider
             return@get call.page("Password", null, frame = PageFrame.CENTER, refresh = "0; url=/login") {
-                card { p { +"Signed in as ${claims.name}. Now the password." } }
+                card { p { +t("Signed in as {0}. Now the password.", claims.name) } }
             }
         }
         call.startSession(kovexy, claims.sub, claims.name)
@@ -175,7 +176,7 @@ fun Route.authRoutes(kovexy: Kovexy) {
             return@post call.loginPage(kovexy, "This account may not use the Kovexy admin UI.", HttpStatusCode.Forbidden)
         }
         val password = call.receiveForm()["password"].orEmpty()
-        val lockedText = { until: Long -> "Too many failed attempts. Try again after ${formatTimestamp(until)}." }
+        val lockedText = { until: Long -> t("Too many failed attempts. Try again after {0}.", formatTimestamp(until)) }
         kovexy.loginThrottle.lockedUntil(ip)?.let { return@post call.loginPage(kovexy, lockedText(it), HttpStatusCode.TooManyRequests) }
         // Argon2 takes a moment and 64 MiB, so at most two checks run at once, a burst cannot fill the heap. The slot
         // comes before the attempt is counted: a busy server is no wrong password (audit run-2)
@@ -222,7 +223,7 @@ private suspend fun ApplicationCall.startSession(kovexy: Kovexy, sub: String, na
     // browser would not send the SameSite=Strict cookie with it. A same-site refresh does.
     page("Signed in", null, frame = PageFrame.CENTER, refresh = "0; url=/") {
         card {
-            p { +"Signed in as $name." }
+            p { +t("Signed in as {0}.", name) }
             linkButton("/", "Continue", "primary block")
         }
     }
@@ -240,19 +241,19 @@ private suspend fun ApplicationCall.loginPage(kovexy: Kovexy, error: String?, st
     val pending = verifyPending(request.cookies[PENDING_COOKIE], kovexy.clock())
     page("Log in", null, frame = PageFrame.CENTER, status = status) {
         card {
-            h2 { +"Log in" }
-            p("muted") { +"Admin interface of this Kovexy reverse proxy." }
+            h2 { +t("Log in") }
+            p("muted") { +t("Admin interface of this Kovexy reverse proxy.") }
             if (kovexy.passwordOnly) notice("warn", PASSWORD_ONLY_WARNING)
             if (error != null) notice("error", error)
             val showPassword = mode == LoginMode.PASSWORD || (mode == LoginMode.BOTH && pending != null)
             if (showPassword) {
-                if (pending != null) p { +"Signed in as ${pending.name}. Step 2 of 2: the password." }
+                if (pending != null) p { +t("Signed in as {0}. Step 2 of 2: the password.", pending.name) }
                 form(action = "/login", method = FormMethod.post, classes = "form") {
                     passwordField("Password", "password", "current-password")
                     submit("Log in", "primary block")
                 }
             } else {
-                if (mode == LoginMode.BOTH) p("muted small") { +"Step 1 of 2: the identity provider, then the password." }
+                if (mode == LoginMode.BOTH) p("muted small") { +t("Step 1 of 2: the identity provider, then the password.") }
                 linkButton("/auth/start", "Continue with the identity provider", "primary block")
             }
         }
@@ -261,7 +262,7 @@ private suspend fun ApplicationCall.loginPage(kovexy: Kovexy, error: String?, st
 
 /** User-facing text for a failed OIDC login. Details stay in the log. */
 private fun loginErrorText(error: LoginError): String = when (error) {
-    is LoginError.Denied -> "The identity provider denied the login: ${error.description}"
+    is LoginError.Denied -> t("The identity provider denied the login: {0}", error.description)
     LoginError.UnknownAttempt -> "The login took too long or was started in another browser. Please start again."
     LoginError.StateMismatch -> "The login response did not belong to this browser. Please start again."
     is LoginError.ProviderUnavailable -> "The identity provider is not reachable."

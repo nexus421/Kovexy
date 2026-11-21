@@ -56,6 +56,7 @@ picked up as well. Every change is checked completely and applied while running:
 | `limits` | see below | Timeouts and sizes |
 | `retention` | see below | How long data is kept |
 | `updateCheck` | `true` | Asks GitHub for a newer release while somebody uses the admin UI |
+| `language` | `"en"` | Language of the admin UI, `"en"` or `"de"`. Applies at once. Only the admin UI is translated, logs, error messages of the configuration check, webhook texts, the docs and what visitors see stay English |
 | `webSocketCloseDelay` | `"0s"` | Time open WebSockets get after a config change before they are closed, like Caddy |
 
 ### `admin`

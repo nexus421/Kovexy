@@ -1,6 +1,7 @@
 package bayern.kickner.kovexy.config
 
 import kotlinx.serialization.KSerializer
+import bayern.kickner.kovexy.i18n.DEFAULT_LANGUAGE
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -73,6 +74,7 @@ const val LETS_ENCRYPT_STAGING = "https://acme-staging-v02.api.letsencrypt.org/d
  * @property retention How long the access log and the statistics are kept.
  * @property updateCheck Asks GitHub for a newer release while somebody uses the admin UI.
  * @property webSocketCloseDelay Time open WebSockets get after a config change before they are closed.
+ * @property language Language of the admin UI, a key of [bayern.kickner.kovexy.i18n.LANGUAGES].
  */
 @Serializable
 data class KovexyConfig(
@@ -91,6 +93,7 @@ data class KovexyConfig(
     val retention: RetentionConfig = RetentionConfig(),
     val updateCheck: Boolean = true,
     val webSocketCloseDelay: TextDuration = Duration.ZERO,
+    val language: String = DEFAULT_LANGUAGE,
 )
 
 /**

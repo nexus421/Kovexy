@@ -131,3 +131,18 @@ On every proxied domain Kovexy owns `/.kovexy/`: `captcha.js`, `POST captcha/ver
 | Phase 3 pages at desktop and phone width | Checked in the browser with `devRun` on 18.11.2026 (Incus only without containers) |
 | Incus with a real Incus, real reCAPTCHA | Not tested |
 | Real Let's Encrypt, real OIDC provider, long running operation, throughput | Not tested |
+
+## Languages of the admin UI
+
+English is built in. Every text the admin UI shows goes through `t("English text")` (`i18n/I18n.kt`) or through a layout
+helper that does it (`pageHeader`, `card`, `fold`, `pill`, the field helpers, `helpButton`). A text with values uses
+`{0}`, `{1}` and so on: `t("{0} entries", count)`. Another language is a dictionary `src/main/resources/i18n/<code>.json`
+(English text to the text in that language) and one more entry in `LANGUAGES`. A text without an entry shows in English.
+The key is the English text itself, so changing an English sentence needs the same change in the dictionaries.
+
+Logs, error messages of the configuration check, webhook texts, the docs and everything visitors see stay English. Put no
+`t(...)` around them.
+
+`TranslationsTest` renders every page in German and fails for a text without a translation, for a `t(...)` in the code
+that is missing in the dictionary and for a translation that loses a placeholder. To start the dictionary of a new language, run it
+with `KOVEXY_COLLECT_TEXTS=/tmp/texts.txt` and it writes the missing texts to that file.

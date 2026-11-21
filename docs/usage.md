@@ -9,6 +9,7 @@ fold their sections away (the note beside a title shows the state, for example "
 stays at the lower edge of the window while the form is longer than the screen. The OIDC fields on the settings page only show
 while the login mode uses OIDC. A small question mark next to a field shows, on hover or keyboard focus (a tap on a phone),
 what the field is, what a change does and what is recommended.
+The language of the admin UI (English or German) is set under Settings, Admin UI, and applies at once.
 
 | Page | What it does |
 |---|---|

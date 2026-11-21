@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.audit.AuditAction
 import bayern.kickner.kovexy.config.IncusConfig
@@ -89,8 +90,8 @@ private suspend fun ApplicationCall.incusPage(kovexy: Kovexy, problems: List<Str
         if (problems.isNotEmpty()) problems("Not done:", problems)
         when {
             settings.enabled.not() -> notice("info", "Discovery is off. Turn it on below.")
-            incus.connected -> notice("success", "Connected to Incus at ${settings.socket}, changes show up at once.")
-            else -> notice("warn", "Not connected to Incus at ${settings.socket}: ${incus.lastError ?: "connecting"}. Kovexy tries again every 10 seconds.")
+            incus.connected -> notice("success", t("Connected to Incus at {0}, changes show up at once.", settings.socket))
+            else -> notice("warn", t("Not connected to Incus at {0}: {1}. Kovexy tries again every 10 seconds.", settings.socket, incus.lastError ?: "connecting"))
         }
         // While discovery is off the lists would only be empty, the settings come right after the notice
         if (settings.enabled) incusLists(incus)
@@ -101,12 +102,12 @@ private suspend fun ApplicationCall.incusPage(kovexy: Kovexy, problems: List<Str
                 checkField("Discover Incus containers", "enabled", settings.enabled, "only reads, never changes an instance", help = "incus.enabled")
                 textField("Socket", "socket", settings.socket, required = false)
                 textField("Projects", "projects", settings.projects.joinToString(" "), required = false,
-                    hint = "Only instances of these Incus projects count. In restricted projects non-admins may create instances and set keys.")
-                textField("Interface", "interface", settings.`interface`, required = false, hint = "Its first global IPv4 address is the target.")
+                    hint = t("Only instances of these Incus projects count. In restricted projects non-admins may create instances and set keys."))
+                textField("Interface", "interface", settings.`interface`, required = false, hint = t("Its first global IPv4 address is the target."))
                 div("btn-row") { submit("Save Incus settings") }
             }
             p("muted small gap-top") {
-                +"Decisions are stored in the database. A backup holds them only when the database is included, otherwise every container needs a new click after a restore."
+                +t("Decisions are stored in the database. A backup holds them only when the database is included, otherwise every container needs a new click after a restore.")
             }
         }
     }
@@ -117,20 +118,20 @@ private fun FlowContent.incusLists(incus: IncusDiscovery) {
     val claims = incus.claims
     val detected = claims.filter { it.state == IncusState.DETECTED && it.instance.running }
     card("Detected", "gap-top") {
-        if (detected.isEmpty()) p("muted") { +"No running container waits for a decision." }
+        if (detected.isEmpty()) p("muted") { +t("No running container waits for a decision.") }
         else claimTable(detected) { claim ->
             postButton("/incus/approve", "Approve", "primary sm", hidden = mapOf("id" to claim.id, "domains" to claim.domains.joinToString(","), "target" to claim.target))
             postButton("/incus/reject", "Reject", "sm", hidden = mapOf("id" to claim.id))
         }
         if (claims.any { it.state == IncusState.DETECTED && it.approvedDomains.isNotEmpty() }) {
-            p("muted small") { +"A container whose domains, address, port, HTTPS or profile changed after the approval shows up here again and needs a new click." }
+            p("muted small") { +t("A container whose domains, address, port, HTTPS or profile changed after the approval shows up here again and needs a new click.") }
         }
     }
     val approved = claims.filter { it.state == IncusState.APPROVED }
     card("Approved", "gap-top") {
-        if (approved.isEmpty()) p("muted") { +"No container approved yet." }
+        if (approved.isEmpty()) p("muted") { +t("No container approved yet.") }
         else claimTable(approved) { claim ->
-            postButton("/incus/remove", "Remove", "danger sm", confirm = "Remove the route of ${claim.id}? It is gone at once.", hidden = mapOf("id" to claim.id))
+            postButton("/incus/remove", "Remove", "danger sm", confirm = t("Remove the route of {0}? It is gone at once.", claim.id), hidden = mapOf("id" to claim.id))
         }
     }
     val rejected = claims.filter { it.state == IncusState.REJECTED }
@@ -139,7 +140,7 @@ private fun FlowContent.incusLists(incus: IncusDiscovery) {
     }
     val plain = incus.withoutKeys()
     card("Without keys", "gap-top") {
-        p("muted small") { +"Running containers without user.kovexy.* keys. Set the keys on the host, then the container shows up under Detected." }
+        p("muted small") { +t("Running containers without user.kovexy.* keys. Set the keys on the host, then the container shows up under Detected.") }
         if (plain.isEmpty()) p("muted") { +if (incus.connected) "None." else "Shown once Kovexy is connected to Incus." }
         plain.forEach { instance ->
             val commandId = nextElementId("cmd")
@@ -152,12 +153,12 @@ private fun FlowContent.incusLists(incus: IncusDiscovery) {
                 copyBlock(incusSetCommand(instance, "app.example.com", "8080"), commandId, template = incusSetCommand(instance, "{domain}", "{port}"))
             }
         }
-        p("muted small gap-top") { +"Optional: user.kovexy.tls=true when the container speaks HTTPS (its certificate is not checked), user.kovexy.access=<profile> for an access profile." }
+        p("muted small gap-top") { +t("Optional: user.kovexy.tls=true when the container speaks HTTPS (its certificate is not checked), user.kovexy.access=<profile> for an access profile.") }
     }
 }
 
 private fun FlowContent.commandInput(label: String, commandId: String, key: String, example: String, allowed: String) = label("field") {
-    span { +label }
+    span { +t(label) }
     input(InputType.text) {
         placeholder = example
         attributes["data-fills"] = commandId
@@ -170,19 +171,19 @@ private fun FlowContent.commandInput(label: String, commandId: String, key: Stri
 
 private fun FlowContent.claimTable(claims: List<IncusClaim>, actions: kotlinx.html.TD.(IncusClaim) -> Unit) = div("table-wrap") {
     table("stack-mobile") {
-        thead { tr { th { +"Container" }; th { +"Domains" }; th { +"Target" }; th { +"Profile" }; th { +"State" }; th { } } }
+        thead { tr { th { +t("Container") }; th { +t("Domains") }; th { +t("Target") }; th { +t("Profile") }; th { +t("State") }; th { } } }
         tbody {
             claims.forEach { claim ->
                 tr {
-                    td { attributes["data-label"] = "Container"; +claim.id }
-                    td { attributes["data-label"] = "Domains"; span("break") { +claim.domains.joinToString(", ").ifEmpty { "-" } } }
+                    td { attributes["data-label"] = t("Container"); +claim.id }
+                    td { attributes["data-label"] = t("Domains"); span("break") { +claim.domains.joinToString(", ").ifEmpty { "-" } } }
                     td {
-                        attributes["data-label"] = "Target"
+                        attributes["data-label"] = t("Target")
                         +"${claim.instance.address ?: "no address"}:${if (claim.port == 0) "?" else claim.port}${if (claim.tls) " (HTTPS)" else ""}"
                     }
-                    td { attributes["data-label"] = "Profile"; +(claim.access ?: "none") }
+                    td { attributes["data-label"] = t("Profile"); +(claim.access ?: "none") }
                     td {
-                        attributes["data-label"] = "State"
+                        attributes["data-label"] = t("State")
                         when {
                             claim.live -> pill("ok", "live")
                             claim.instance.running.not() -> pill("", "stopped")

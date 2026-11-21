@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.config.DEFAULT_WEBHOOK_TEMPLATE
 import bayern.kickner.kovexy.config.KNOT_WEBHOOK_TEMPLATE
@@ -38,16 +39,16 @@ fun Route.webhookRoutes(kovexy: Kovexy) {
             }
             val hooks = kovexy.config.webhooks
             card {
-                if (hooks.isEmpty()) p("muted") { +"No webhooks yet. With KNot you get these events as mail." }
+                if (hooks.isEmpty()) p("muted") { +t("No webhooks yet. With KNot you get these events as mail.") }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Name" }; th { +"URL" }; th { +"Events" }; th { } } }
+                        thead { tr { th { +t("Name") }; th { +t("URL") }; th { +t("Events") }; th { } } }
                         tbody {
                             hooks.forEach { hook ->
                                 tr {
-                                    td { attributes["data-label"] = "Name"; a(href = "/webhooks/${urlPart(hook.name)}") { +hook.name } }
-                                    td { attributes["data-label"] = "URL"; +hook.url }
-                                    td { attributes["data-label"] = "Events"; +"${hook.events.size} of ${WebhookEvent.entries.size}" }
+                                    td { attributes["data-label"] = t("Name"); a(href = "/webhooks/${urlPart(hook.name)}") { +hook.name } }
+                                    td { attributes["data-label"] = t("URL"); +hook.url }
+                                    td { attributes["data-label"] = t("Events"); +t("{0} of {1}", hook.events.size, WebhookEvent.entries.size) }
                                     td("actions") {
                                         postButton("/webhooks/${urlPart(hook.name)}/test", "Send test", "sm")
                                         linkButton("/webhooks/${urlPart(hook.name)}", "Edit", "sm")
@@ -103,7 +104,7 @@ fun Route.webhookRoutes(kovexy: Kovexy) {
     post("/webhooks/{name}/test") {
         val hook = kovexy.config.webhooks.firstOrNull { it.name == call.parameters["name"] } ?: return@post call.notFoundWebhook()
         if (kovexy.webhooks.test(hook)) return@post call.respondRedirect("/webhooks?done=webhook-tested")
-        call.errorPage(HttpStatusCode.BadGateway, "Test failed", "The webhook \"${hook.name}\" did not answer with a 2xx status within 10 seconds. The log has the details.")
+        call.errorPage(HttpStatusCode.BadGateway, "Test failed", t("The webhook \"{0}\" did not answer with a 2xx status within 10 seconds. The log has the details.", hook.name))
     }
 }
 
@@ -132,7 +133,7 @@ private fun webhookFromForm(params: Parameters): Pair<WebhookConfig, List<String
 
 private suspend fun ApplicationCall.webhookForm(kovexy: Kovexy, name: String?, hook: WebhookConfig, problems: List<String>, posted: String?) {
     val version = posted ?: kovexy.configStore.current.version
-    val title = if (name == null) "Add webhook" else "Webhook $name"
+    val title = if (name == null) "Add webhook" else t("Webhook {0}", name)
     val action = if (name == null) "/webhooks/new" else "/webhooks/${urlPart(name)}"
     page(title, session, Nav.WEBHOOKS, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
         pageHeader(title) {
@@ -148,22 +149,22 @@ private suspend fun ApplicationCall.webhookForm(kovexy: Kovexy, name: String?, h
                     textField("URL", "url", hook.url, placeholder = "https://knot.example.com/hook", help = "webhook.url")
                 }
                 textAreaField("Headers", "headers", hook.headers.entries.joinToString("\n") { "${it.key}: ${it.value}" }, rows = 2, help = "webhook.headers",
-                    hint = "One per line, Name: value. Without Content-Type Kovexy sends application/json.")
+                    hint = t("One per line, Name: value. Without Content-Type Kovexy sends application/json."))
                 textAreaField("Template", "template", hook.template, rows = 4, required = true,
-                    hint = "Placeholders: {{event}}, {{subject}}, {{body}}, {{time}}, {{domain}}. Values are escaped for JSON strings.")
+                    hint = t("Placeholders: {{event}}, {{subject}}, {{body}}, {{time}}, {{domain}}. Values are escaped for JSON strings."))
                 fieldSet {
-                    legend { +"Events"; helpButton("webhook.events", "Events") }
+                    legend { +t("Events"); helpButton("webhook.events", "Events") }
                     WebhookEvent.entries.forEach { event ->
                         checkField(event.label, "event.${event.key}", event in hook.events, if (event in BUNDLED_EVENTS) "bundled" else null)
                     }
                 }
                 textField("Bundle window", "bundleWindow", hook.bundleWindow.toString(),
-                    hint = "The first IP ban or failed login is sent at once, further ones within this time come as one message.")
+                    hint = t("The first IP ban or failed login is sent at once, further ones within this time come as one message."))
                 div("btn-row") { submit("Save webhook") }
             }
         }
         if (name != null) card("Delete webhook", "danger gap-top") {
-            postButton("$action/delete", "Delete webhook", "danger", confirm = "Delete this webhook?", hidden = mapOf("version" to version))
+            postButton("$action/delete", "Delete webhook", "danger", confirm = t("Delete this webhook?"), hidden = mapOf("version" to version))
         }
     }
 }

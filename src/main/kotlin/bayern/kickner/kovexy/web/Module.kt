@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
 import bayern.kickner.kovexy.Kovexy
@@ -108,7 +109,7 @@ suspend fun ApplicationCall.errorPage(status: HttpStatusCode, title: String, tex
     page(title, session, status = status) {
         pageHeader(title)
         card {
-            p("muted") { +text }
+            p("muted") { +t(text) }
             linkButton("/", "Back to the status page", "primary")
         }
     }
@@ -130,6 +131,6 @@ fun ApplicationCall.saveConfig(version: String?, change: (KovexyConfig) -> Kovex
         is ResultOf2.Failure -> when (val error = result.value) {
             is SaveError.Invalid -> error.problems
             SaveError.Conflict -> listOf("The configuration changed since this page was loaded (in another tab or in the file). Open the page again from the menu and apply your change there.")
-            is SaveError.Io -> listOf("Saving failed: ${error.message}")
+            is SaveError.Io -> listOf(t("Saving failed: {0}", error.message))
         }
     }

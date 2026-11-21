@@ -3,6 +3,7 @@ package bayern.kickner.kovexy
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
 import bayern.kickner.kovexy.auth.LoginThrottle
+import bayern.kickner.kovexy.i18n.I18n
 import bayern.kickner.kovexy.auth.SessionStore
 import bayern.kickner.kovexy.config.AdminConfig
 import bayern.kickner.kovexy.config.ChangeSource
@@ -265,6 +266,7 @@ class Kovexy internal constructor(
         if (old != null && old.acme.effectiveDirectory == LETS_ENCRYPT_STAGING && new.acme.effectiveDirectory != LETS_ENCRYPT_STAGING) {
             routing.tlsDomains().forEach(certificates::renewNow)
         }
+        I18n.language = new.language
         rebuildRouting()
         incus.reconcile(scope)
         clients.update(new.limits)
@@ -319,6 +321,7 @@ fun createKovexy(
 ): Kovexy {
     val dataDir = configStore.dataDir
     prepareDataDir(dataDir)
+    I18n.language = configStore.current.config.language
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val config = { configStore.current.config }
     val storage = Storage(File(dataDir, DATABASE_FILE_NAME))

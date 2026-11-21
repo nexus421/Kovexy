@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.audit.AuditAction
 import bayern.kickner.kovexy.audit.SecurityEventType
@@ -29,20 +30,20 @@ fun Route.securityRoutes(kovexy: Kovexy) {
         val bans = kovexy.bans.list()
         val events = kovexy.security.latest(type)
         call.page("Security", call.session, Nav.SECURITY) {
-            pageHeader("Security", "Bans from trap paths and everything the access profiles refused. Kept ${kovexy.config.retention.securityEvents}.")
+            pageHeader("Security", t("Bans from trap paths and everything the access profiles refused. Kept {0}.", kovexy.config.retention.securityEvents))
             card("Active bans") {
-                if (bans.isEmpty()) p("muted") { +"Nobody is banned." }
+                if (bans.isEmpty()) p("muted") { +t("Nobody is banned.") }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Address" }; th { +"Reason" }; th { +"Domain" }; th { +"Until" }; th { } } }
+                        thead { tr { th { +t("Address") }; th { +t("Reason") }; th { +t("Domain") }; th { +t("Until") }; th { } } }
                         tbody {
                             bans.forEach { ban ->
                                 tr {
-                                    td { attributes["data-label"] = "Address"; +ban.key }
-                                    td { attributes["data-label"] = "Reason"; +ban.reason }
-                                    td { attributes["data-label"] = "Domain"; +ban.domain }
-                                    td("nowrap") { attributes["data-label"] = "Until"; +formatTimestamp(ban.expiresAt) }
-                                    td("actions") { postButton("/security/lift", "Lift", "sm", confirm = "Lift the ban of ${ban.key}?", hidden = mapOf("key" to ban.key)) }
+                                    td { attributes["data-label"] = t("Address"); +ban.key }
+                                    td { attributes["data-label"] = t("Reason"); +ban.reason }
+                                    td { attributes["data-label"] = t("Domain"); +ban.domain }
+                                    td("nowrap") { attributes["data-label"] = t("Until"); +formatTimestamp(ban.expiresAt) }
+                                    td("actions") { postButton("/security/lift", "Lift", "sm", confirm = t("Lift the ban of {0}?", ban.key), hidden = mapOf("key" to ban.key)) }
                                 }
                             }
                         }
@@ -54,18 +55,18 @@ fun Route.securityRoutes(kovexy: Kovexy) {
                     selectField("Kind", "type", type?.name.orEmpty(), listOf("" to "All") + SecurityEventType.entries.map { it.name to it.label }, autosubmit = true)
                     submit("Filter", "")
                 }
-                if (events.isEmpty()) p("muted gap-top") { +"No events." }
+                if (events.isEmpty()) p("muted gap-top") { +t("No events.") }
                 else div("table-wrap gap-top") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Time" }; th { +"Kind" }; th { +"Address" }; th { +"Domain" }; th { +"Detail" } } }
+                        thead { tr { th { +t("Time") }; th { +t("Kind") }; th { +t("Address") }; th { +t("Domain") }; th { +t("Detail") } } }
                         tbody {
                             events.forEach { e ->
                                 tr {
-                                    td("nowrap") { attributes["data-label"] = "Time"; +formatTimestamp(e.time) }
-                                    td { attributes["data-label"] = "Kind"; +e.type.label }
-                                    td { attributes["data-label"] = "Address"; +e.ip }
-                                    td { attributes["data-label"] = "Domain"; +e.domain }
-                                    td { attributes["data-label"] = "Detail"; span("small break") { +e.detail } }
+                                    td("nowrap") { attributes["data-label"] = t("Time"); +formatTimestamp(e.time) }
+                                    td { attributes["data-label"] = t("Kind"); +t(e.type.label) }
+                                    td { attributes["data-label"] = t("Address"); +e.ip }
+                                    td { attributes["data-label"] = t("Domain"); +e.domain }
+                                    td { attributes["data-label"] = t("Detail"); span("small break") { +e.detail } }
                                 }
                             }
                         }
@@ -87,28 +88,28 @@ fun Route.securityRoutes(kovexy: Kovexy) {
         val action = AuditAction.entries.firstOrNull { it.name == call.request.queryParameters["action"] }
         val entries = kovexy.audit.latest(action)
         call.page("Audit", call.session, Nav.AUDIT) {
-            pageHeader("Audit", "Who changed what and when. Secrets show as ***. Kept ${kovexy.config.retention.audit}.")
+            pageHeader("Audit", t("Who changed what and when. Secrets show as ***. Kept {0}.", kovexy.config.retention.audit))
             card {
                 form(action = "/audit", method = FormMethod.get, classes = "filters") {
                     selectField("Action", "action", action?.name.orEmpty(), listOf("" to "All") + AuditAction.entries.map { it.name to it.label }, autosubmit = true)
                     submit("Filter", "")
                 }
-                if (entries.isEmpty()) p("muted gap-top") { +"No entries." }
+                if (entries.isEmpty()) p("muted gap-top") { +t("No entries.") }
                 else div("table-wrap gap-top") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Time" }; th { +"Who" }; th { +"Action" }; th { +"Detail" } } }
+                        thead { tr { th { +t("Time") }; th { +t("Who") }; th { +t("Action") }; th { +t("Detail") } } }
                         tbody {
                             entries.forEach { e ->
                                 tr {
-                                    td("nowrap") { attributes["data-label"] = "Time"; +formatTimestamp(e.time) }
+                                    td("nowrap") { attributes["data-label"] = t("Time"); +formatTimestamp(e.time) }
                                     td {
-                                        attributes["data-label"] = "Who"
+                                        attributes["data-label"] = t("Who")
                                         +e.actor.name
                                         if (e.actor.ip.isNotEmpty()) span("muted small") { +" ${e.actor.ip}" }
                                     }
-                                    td { attributes["data-label"] = "Action"; +e.action.label; if (e.target.isNotEmpty()) span("muted small") { +" ${e.target}" } }
+                                    td { attributes["data-label"] = t("Action"); +t(e.action.label); if (e.target.isNotEmpty()) span("muted small") { +" ${e.target}" } }
                                     td {
-                                        attributes["data-label"] = "Detail"
+                                        attributes["data-label"] = t("Detail")
                                         if (e.detail.contains('\n')) pre("diff") { +e.detail } else span("small break") { +e.detail }
                                     }
                                 }

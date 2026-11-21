@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.config.Fallback
 import bayern.kickner.kovexy.config.HealthCheckConfig
@@ -47,22 +48,22 @@ fun Route.backendRoutes(kovexy: Kovexy) {
             }
             val groups = kovexy.backends.all()
             card {
-                if (groups.isEmpty()) p("muted") { +"No backends yet." }
+                if (groups.isEmpty()) p("muted") { +t("No backends yet.") }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Backend" }; th { +"Servers" }; th { +"Health check" }; th { } } }
+                        thead { tr { th { +t("Backend") }; th { +t("Servers") }; th { +t("Health check") }; th { } } }
                         tbody {
                             groups.forEach { group ->
                                 tr {
-                                    td { attributes["data-label"] = "Backend"; a(href = "/backends/${urlPart(group.config.name)}") { +group.config.name } }
+                                    td { attributes["data-label"] = t("Backend"); a(href = "/backends/${urlPart(group.config.name)}") { +group.config.name } }
                                     td {
-                                        attributes["data-label"] = "Servers"
+                                        attributes["data-label"] = t("Servers")
                                         group.servers.forEach { server ->
                                             div {
                                                 if (server.healthy) pill("ok", "up") else pill("error", "down")
                                                 +" ${server.address}"
                                                 span("muted small") {
-                                                    +" weight ${server.config.weight}"
+                                                    +t(" weight {0}", server.config.weight)
                                                     if (server.config.weight == 0) +" (backup)"
                                                     if (server.config.tls) +", https"
                                                 }
@@ -70,9 +71,9 @@ fun Route.backendRoutes(kovexy: Kovexy) {
                                         }
                                     }
                                     td {
-                                        attributes["data-label"] = "Health check"
+                                        attributes["data-label"] = t("Health check")
                                         val check = group.config.healthCheck
-                                        +(if (check.path.isEmpty()) "passive only" else "GET ${check.path} every ${check.interval}")
+                                        +(if (check.path.isEmpty()) "passive only" else t("GET {0} every {1}", check.path, check.interval))
                                     }
                                     td("actions") { linkButton("/backends/${urlPart(group.config.name)}", "Edit", "sm") }
                                 }
@@ -182,7 +183,7 @@ fun parseDuration(label: String, text: String?, problems: MutableList<String>): 
 
 private suspend fun ApplicationCall.backendForm(kovexy: Kovexy, name: String?, group: BackendConfig, problems: List<String>, posted: String?) {
     val version = posted ?: kovexy.configStore.current.version
-    val title = if (name == null) "Add backend" else "Backend $name"
+    val title = if (name == null) "Add backend" else t("Backend {0}", name)
     val rows = group.servers + List(EMPTY_SERVER_ROWS) { BackendServerConfig("") }
     val action = if (name == null) "/backends/new" else "/backends/${urlPart(name)}"
     page(title, session, Nav.BACKENDS, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
@@ -191,32 +192,32 @@ private suspend fun ApplicationCall.backendForm(kovexy: Kovexy, name: String?, g
         card {
             form(action = action, method = FormMethod.post, classes = "form") {
                 versionField(version)
-                textField("Name", "name", group.name, help = "backend.name", hint = "Routes refer to the backend by this name. Renaming updates them.")
+                textField("Name", "name", group.name, help = "backend.name", hint = t("Routes refer to the backend by this name. Renaming updates them."))
                 fieldSet {
-                    legend { +"Servers"; helpButton("servers", "Servers") }
+                    legend { +t("Servers"); helpButton("servers", "Servers") }
                     p("muted small") {
-                        +"Requests are spread by weight at random. Weight 0 makes a backup server that only gets requests when no other server is up. "
+                        +t("Requests are spread by weight at random. Weight 0 makes a backup server that only gets requests when no other server is up. ")
                         +"Empty rows are ignored, clear the address to remove a server."
                     }
                     hiddenInput(name = "serverCount") { value = rows.size.toString() }
                     div("table-wrap") {
                         table("stack-mobile server-table") {
-                            thead { tr { th { +"Address" }; th { +"Weight" }; th { +"Max connections" }; th { +"HTTPS" }; th { +"Any certificate" } } }
+                            thead { tr { th { +t("Address") }; th { +t("Weight") }; th { +t("Max connections") }; th { +t("HTTPS") }; th { +t("Any certificate") } } }
                             tbody {
                                 rows.forEachIndexed { k, server ->
                                     tr {
                                         td {
-                                            attributes["data-label"] = "Address"
+                                            attributes["data-label"] = t("Address")
                                             input(InputType.text, name = "s$k.address") {
                                                 value = server.address
                                                 placeholder = "127.0.0.1:8080"
-                                                attributes["aria-label"] = "Address"
+                                                attributes["aria-label"] = t("Address")
                                             }
                                         }
-                                        td { attributes["data-label"] = "Weight"; input(InputType.number, name = "s$k.weight") { value = server.weight.toString(); min = "0"; attributes["aria-label"] = "Weight" } }
-                                        td { attributes["data-label"] = "Max connections"; input(InputType.number, name = "s$k.max") { value = server.maxConnections.toString(); min = "0"; attributes["aria-label"] = "Max connections, 0 is unlimited" } }
-                                        td { attributes["data-label"] = "HTTPS"; checkBoxInput(name = "s$k.tls") { checked = server.tls; attributes["aria-label"] = "HTTPS" } }
-                                        td { attributes["data-label"] = "Any certificate"; checkBoxInput(name = "s$k.skip") { checked = server.skipCertVerify; attributes["aria-label"] = "Accept any certificate" } }
+                                        td { attributes["data-label"] = t("Weight"); input(InputType.number, name = "s$k.weight") { value = server.weight.toString(); min = "0"; attributes["aria-label"] = t("Weight") } }
+                                        td { attributes["data-label"] = t("Max connections"); input(InputType.number, name = "s$k.max") { value = server.maxConnections.toString(); min = "0"; attributes["aria-label"] = t("Max connections, 0 is unlimited") } }
+                                        td { attributes["data-label"] = t("HTTPS"); checkBoxInput(name = "s$k.tls") { checked = server.tls; attributes["aria-label"] = t("HTTPS") } }
+                                        td { attributes["data-label"] = t("Any certificate"); checkBoxInput(name = "s$k.skip") { checked = server.skipCertVerify; attributes["aria-label"] = t("Accept any certificate") } }
                                     }
                                 }
                             }
@@ -225,7 +226,7 @@ private suspend fun ApplicationCall.backendForm(kovexy: Kovexy, name: String?, g
                 }
                 checkField("Sticky sessions", "sticky", group.stickySession, "a cookie sends a visitor to the same server again")
                 fold("Active health check", if (group.healthCheck.path.isEmpty()) "passive only" else group.healthCheck.path, open = group.healthCheck.path.isNotEmpty() || problems.isNotEmpty()) {
-                    p("muted small") { +"Without a path servers are only checked passively: a connection error marks a server down, it is tried again every 30 seconds." }
+                    p("muted small") { +t("Without a path servers are only checked passively: a connection error marks a server down, it is tried again every 30 seconds.") }
                     div("grid-2") {
                         textField("Path", "healthPath", group.healthCheck.path, placeholder = "/health", required = false)
                         textField("Expected status", "expectStatus", group.healthCheck.expectStatus.toString(), type = InputType.number)
@@ -237,8 +238,8 @@ private suspend fun ApplicationCall.backendForm(kovexy: Kovexy, name: String?, g
             }
         }
         if (name != null) card("Delete backend", "danger gap-top") {
-            p("muted") { +"Only possible while no domain and not the fallback use it." }
-            postButton("$action/delete", "Delete backend", "danger", confirm = "Delete this backend?", hidden = mapOf("version" to version))
+            p("muted") { +t("Only possible while no domain and not the fallback use it.") }
+            postButton("$action/delete", "Delete backend", "danger", confirm = t("Delete this backend?"), hidden = mapOf("version" to version))
         }
     }
 }

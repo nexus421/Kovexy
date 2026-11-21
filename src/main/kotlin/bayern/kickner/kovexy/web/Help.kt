@@ -1,6 +1,7 @@
 package bayern.kickner.kovexy.web
 
 import kotlinx.html.ButtonType
+import bayern.kickner.kovexy.i18n.t
 import kotlinx.html.FlowContent
 import kotlinx.html.button
 import kotlinx.html.span
@@ -47,6 +48,11 @@ private val HELP: Map<String, HelpText> = mapOf(
         "On.",
     ),
     // Settings: admin UI
+    "language" to HelpText(
+        "The language of the admin UI.",
+        "It applies to every page at once. Logs, error messages of the configuration check, webhook texts and what visitors see stay English.",
+        "The language you read most easily.",
+    ),
     "adminHost" to HelpText(
         "The address the admin UI listens on.",
         "127.0.0.1 means only this computer, 0.0.0.0 means every network. A change moves the UI at once, you may lose the connection.",
@@ -361,14 +367,14 @@ fun FlowContent.helpButton(key: String, label: String) {
     val help = helpFor(key) ?: return
     span("help") {
         button(type = ButtonType.button, classes = "help-btn") {
-            attributes["aria-label"] = "Help: $label"
+            attributes["aria-label"] = t("Help: {0}", t(label))
             +"?"
         }
         span("help-pop") {
             attributes["role"] = "tooltip"
-            span("help-line") { +help.what }
-            help.effect?.let { span("help-line") { +it } }
-            help.recommended?.let { span("help-line") { span("help-lead") { +"Recommended: " }; +it } }
+            span("help-line") { +t(help.what) }
+            help.effect?.let { span("help-line") { +t(it) } }
+            help.recommended?.let { span("help-line") { span("help-lead") { +"${t("Recommended:")} " }; +t(it) } }
         }
     }
 }

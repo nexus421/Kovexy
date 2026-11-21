@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.web
 
+import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.config.Fallback
 import io.ktor.http.HttpStatusCode
@@ -58,23 +59,23 @@ private suspend fun ApplicationCall.fallbackForm(kovexy: Kovexy, domain: Fallbac
                     "noResponse" to "Empty answer (204), then close the connection",
                 ))
                 fieldSet("target-fields target-static") {
-                    legend { +"Static files" }
-                    textField("Directory", "root", (domain as? Fallback.Static)?.root.orEmpty(), hint = "Empty means www in the data directory, with a neutral page.", required = false)
+                    legend { +t("Static files") }
+                    textField("Directory", "root", (domain as? Fallback.Static)?.root.orEmpty(), hint = t("Empty means www in the data directory, with a neutral page."), required = false)
                     checkField("List directories without index file", "directoryListing", (domain as? Fallback.Static)?.directoryListing == true)
                 }
                 fieldSet("target-fields target-backend") {
-                    legend { +"Backend" }
+                    legend { +t("Backend") }
                     selectField("Backend", "backend", (domain as? Fallback.Backend)?.backend.orEmpty(),
                         kovexy.config.backends.map { it.name to it.name }.ifEmpty { listOf("" to "No backends yet") })
                 }
                 fieldSet("target-fields target-redirect") {
-                    legend { +"Redirect" }
+                    legend { +t("Redirect") }
                     textField("Target URL", "url", (domain as? Fallback.Redirect)?.url.orEmpty(), help = "redirectUrl", placeholder = "https://example.com", required = false,
-                        hint = "A redirect to the requested domain itself is refused, it would loop.")
+                        hint = t("A redirect to the requested domain itself is refused, it would loop."))
                     selectField("Status", "redirectStatus", ((domain as? Fallback.Redirect)?.status ?: 307).toString(), listOf("307" to "307 temporary", "301" to "301 permanent"))
                     checkField("Keep the path and query", "keepPath", (domain as? Fallback.Redirect)?.keepPath ?: true)
                 }
-                p("muted small") { +"The 404 page and the empty answer need no settings." }
+                p("muted small") { +t("The 404 page and the empty answer need no settings.") }
                 div("btn-row") { submit("Save fallback") }
             }
         }

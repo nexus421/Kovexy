@@ -1,5 +1,6 @@
 package bayern.kickner.kovexy.config
 
+import bayern.kickner.kovexy.i18n.LANGUAGES
 import bayern.kickner.kovexy.auth.isValidBcryptHash
 import bayern.kickner.kovexy.auth.isValidPasswordHash
 import java.net.URI
@@ -26,6 +27,7 @@ fun validateConfig(config: KovexyConfig): List<String> = buildList {
     validateAdmin(config.admin)
     validateAcme(config.acme)
 
+    if (config.language !in LANGUAGES) add("language must be one of ${LANGUAGES.keys.joinToString(", ")}")
     if (config.listeners != DEFAULT_LISTENERS) {
         add("listeners cannot be changed in this version, they are fixed to http on port 80 and https on port 443. Remove the field")
     }
