@@ -37,7 +37,7 @@ const val BASIC_AUTH_CACHE_MILLIS = 10L * 60 * 1000
  * @property userAgent The `User-Agent`.
  * @property authorization The `Authorization` header.
  * @property exactRoute Whether a route with `match: "exact"` serves exactly this path, then traps do not fire.
- * @property domain Requested domain, a solved captcha counts for one domain.
+ * @property host Requested host, a solved captcha counts for one host.
  * @property captchaCookie Value of the captcha cookie.
  * @property isWebSocket Whether the request is a WebSocket upgrade, which cannot follow a redirect.
  * @property foreignInitiated Whether a browser sent the request on behalf of another site (see [isForeignInitiated]).

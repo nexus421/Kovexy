@@ -225,6 +225,8 @@ class Phase2IntegrationTest {
                 assertEquals(listOf("IP_RULES" to 1L), h.kovexy.storage.topLists(0, null)[TopKind.BLOCK_KIND])
                 val blocked = h.kovexy.accessLog.latest(blockedOnly = true)
                 assertEquals("IP_RULES", blocked.single().block)
+                val redirects = h.kovexy.accessLog.latest(redirectsOnly = true)
+                assertEquals(308, redirects.single().status, "The redirect filter only shows the HTTPS redirect")
             }
         }
     }

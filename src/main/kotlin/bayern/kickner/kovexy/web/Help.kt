@@ -347,6 +347,27 @@ private val HELP: Map<String, HelpText> = mapOf(
         "Values are escaped for JSON strings. Empty sends every placeholder as JSON.",
     ),
     "webhook.events" to HelpText("Which events are sent to this webhook.", "Events marked bundled arrive as one message when they come in quickly."),
+    // Access log and statistics: filters
+    "accessLog.domain" to HelpText(
+        "Shows only the requests of this domain.",
+        "Fallback shows the requests for names no domain serves, also the HTTPS redirects of such names.",
+    ),
+    "accessLog.status" to HelpText(
+        "Shows only answers of this status class.",
+        "Blocked shows the requests Kovexy refused, with the reason. HTTPS redirects shows the plain HTTP requests on port 80 that were sent on to HTTPS.",
+    ),
+    "accessLog.q" to HelpText(
+        "Shows only entries whose path, client IP or requested name contain this text.",
+        "The query string is never stored, so it cannot be searched.",
+    ),
+    "stats.domain" to HelpText(
+        "Shows the statistics of one domain only.",
+        "Fallback holds the requests for names no domain serves.",
+    ),
+    "stats.range" to HelpText(
+        "The time span of the charts and lists.",
+        "24 hours and 7 days show hourly values, 30 and 365 days daily values. Hourly values are kept as long as Settings say, daily values forever.",
+    ),
     "bundleWindow" to HelpText(
         "The first IP ban or failed login is sent at once. Further ones within this time arrive as one message at its end.",
         recommended = "60s.",

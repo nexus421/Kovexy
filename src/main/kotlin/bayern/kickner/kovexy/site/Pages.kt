@@ -73,7 +73,7 @@ fun badGatewayPage(): String = neutralPage(502, "Bad Gateway", "The service behi
 /** The page for a path nobody serves. */
 fun notFoundPage(): String = neutralPage(404, "Not Found", "There is nothing at this address.")
 
-/** The default page for domains no domain serves, written to `<dataDir>/www/index.html` on the first start. */
+/** The default page for names no domain serves, written to `<dataDir>/www/index.html` on the first start. */
 fun defaultIndexPage(): String = "<!DOCTYPE html>\n" + createHTML().html {
     frame("Kovexy") {
         h1 { +"It works" }

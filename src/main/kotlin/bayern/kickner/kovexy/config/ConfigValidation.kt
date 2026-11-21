@@ -146,12 +146,12 @@ private fun MutableList<String>.validateBackend(owner: String, backend: BackendC
     if (check.expectStatus !in 100..599) add("$owner.healthCheck.expectStatus must be a HTTP status code")
 }
 
-private fun MutableList<String>.validateFallback(domain: Fallback, backends: Set<String>) {
-    when (domain) {
-        is Fallback.Backend -> if (domain.backend !in backends) add("fallback.backend \"${domain.backend}\" does not exist")
+private fun MutableList<String>.validateFallback(fallback: Fallback, backends: Set<String>) {
+    when (fallback) {
+        is Fallback.Backend -> if (fallback.backend !in backends) add("fallback.backend \"${fallback.backend}\" does not exist")
         is Fallback.Redirect -> {
-            checkAbsoluteUrl("fallback.url", domain.url) { true }?.let(::add)
-            if (domain.status !in REDIRECT_STATUSES) add("fallback.status must be 301 or 307")
+            checkAbsoluteUrl("fallback.url", fallback.url) { true }?.let(::add)
+            if (fallback.status !in REDIRECT_STATUSES) add("fallback.status must be 301 or 307")
         }
 
         is Fallback.Static, Fallback.NotFound, Fallback.NoResponse -> Unit
@@ -163,10 +163,10 @@ val REDIRECT_STATUSES = setOf(301, 307)
 
 private fun MutableList<String>.validateDomain(owner: String, domain: DomainConfig, backends: Set<String>, profiles: Set<String>) {
     if (domain.names.isEmpty()) add("$owner needs at least one name")
-    domain.names.forEach { domain ->
-        if (isValidHostName(domain).not()) add("$owner name \"$domain\" must be a lower case domain name without wildcard, port or trailing dot")
+    domain.names.forEach { name ->
+        if (isValidHostName(name).not()) add("$owner name \"$name\" must be a lower case domain name without wildcard, port or trailing dot")
     }
-    domain.names.groupBy { it }.filter { it.value.size > 1 }.keys.forEach { add("$owner lists domain $it more than once") }
+    domain.names.groupBy { it }.filter { it.value.size > 1 }.keys.forEach { add("$owner lists name $it more than once") }
     domain.access?.let { if (it !in profiles) add("$owner.access \"$it\" is no access profile") }
 
     domain.routes.forEachIndexed { j, route -> validateRoute("$owner.routes[$j]", route, backends, profiles) }

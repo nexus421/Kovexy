@@ -19,7 +19,7 @@ The language of the admin UI (English or German) is set under Settings, Admin UI
 | Fallback | Answer for unknown domains |
 | Certificates | Every domain with state, expiry and issuer, "Renew now", ACME settings |
 | Statistics | Charts per domain for 24 hours, 7, 30 and 365 days: requests by status class, blocked requests, response time with median, 95th and 99th percentile, traffic, and daily top lists of IPs, countries, paths, user agents, referers, methods, backend servers and refusals by reason |
-| Access log | The latest requests, filtered by domain, status class (or only blocked requests) and text. A blocked request shows why it was blocked |
+| Access log | The latest requests, filtered by domain, status class (or only blocked requests, or only HTTPS redirects) and text. A blocked request shows why it was blocked |
 | Access | Access profiles: IP and country rules, exploit filter, trap paths, rate limit, methods, captcha, Basic Auth, the state of the country data, and changes to the AI crawler list for every profile |
 | Webhooks | Targets with template and events, the KNot preset and a test message |
 | Security | Active bans with "Lift", the latest security events by kind |

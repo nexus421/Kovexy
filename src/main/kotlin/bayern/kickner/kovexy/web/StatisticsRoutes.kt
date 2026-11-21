@@ -40,7 +40,7 @@ private enum class Range(val key: String, val label: String, val hourly: Boolean
     YEAR("365d", "Last 365 days", false, 365),
 }
 
-/** Every site key with statistics plus the configured domains. */
+/** Every domain key with statistics plus the configured domains. */
 private fun Kovexy.statsDomains(): List<String> = (config.domains.map { it.names.first() } +
     storage.tx { exec("SELECT DISTINCT site FROM stats_daily") { rs -> buildList { while (rs.next()) add(rs.getString(1)) } } }.orEmpty())
     .distinct().sortedWith(compareBy({ it.isEmpty() }, { it }))
@@ -57,8 +57,8 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
             pageHeader("Statistics", t("Requests, status codes, traffic and response times. Hourly values are kept {0}, daily values forever.", kovexy.config.retention.hourlyStats))
             card {
                 form(action = "/statistics", method = FormMethod.get, classes = "filters") {
-                    selectField("Domain", "domain", domain ?: "*", listOf("*" to "All domains") + domains.map { it to domainLabel(it) }, autosubmit = true)
-                    selectField("Range", "range", range.key, Range.entries.map { it.key to it.label }, autosubmit = true)
+                    selectField("Domain", "domain", domain ?: "*", listOf("*" to "All domains") + domains.map { it to domainLabel(it) }, autosubmit = true, help = "stats.domain")
+                    selectField("Range", "range", range.key, Range.entries.map { it.key to it.label }, autosubmit = true, help = "stats.range")
                     submit("Show", "")
                 }
             }

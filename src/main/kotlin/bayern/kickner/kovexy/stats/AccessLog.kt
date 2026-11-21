@@ -345,10 +345,15 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
      * @param search Only entries whose path, IP or domain contain this text.
      * @param limit Most entries returned.
      * @param blockedOnly Only requests Kovexy blocked.
+     * @param redirectsOnly Only plain HTTP requests that were redirected to HTTPS.
      */
-    fun latest(domain: String? = null, status: Int? = null, search: String? = null, limit: Int = 200, blockedOnly: Boolean = false): List<AccessRecord> = storage.tx {
+    fun latest(
+        domain: String? = null, status: Int? = null, search: String? = null, limit: Int = 200,
+        blockedOnly: Boolean = false, redirectsOnly: Boolean = false,
+    ): List<AccessRecord> = storage.tx {
         val query = AccessLogTable.selectAll()
         if (blockedOnly) query.andWhere { AccessLogTable.block neq "" }
+        if (redirectsOnly) query.andWhere { AccessLogTable.reason eq REASON_HTTPS_REDIRECT }
         domain?.let { s -> query.andWhere { AccessLogTable.domain eq s } }
         status?.let { s -> query.andWhere { AccessLogTable.status.between(s * 100, s * 100 + 99) } }
         search?.takeIf { it.isNotBlank() }?.let { text ->

@@ -85,7 +85,7 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
         stat("${certs.size - certProblems} / ${certs.size}", "Certificates fine", "/certificates")
         stat(requestsToday.toString(), "Requests today", "/statistics")
         stat(blockedToday.toString(), "Blocked today", "/access-log?status=blocked")
-        stat(redirectsToday.toString(), "HTTPS redirects today", "/access-log?status=3")
+        stat(redirectsToday.toString(), "HTTPS redirects today", "/access-log?status=redirects")
         stat(errorsToday.toString(), "5xx answers today", "/access-log?status=5")
         stat(kovexy.webSockets.count.toString(), "Open WebSockets")
     }

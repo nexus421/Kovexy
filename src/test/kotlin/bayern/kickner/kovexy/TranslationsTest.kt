@@ -27,7 +27,8 @@ class TranslationsTest {
               { "path": "/", "target": { "type": "backend", "backend": "app" } },
               { "path": "/files", "target": { "type": "static", "root": "/tmp" } },
               { "path": "/go", "target": { "type": "redirect", "url": "https://x.test" } },
-              { "path": "/no", "target": { "type": "deny" } } ] } ],
+              { "path": "/no", "target": { "type": "deny" } } ] },
+            { "names": ["quiet.test"], "accessLog": false } ],
           "webhooks": [ { "name": "w", "url": "https://hook.test/x" } ] }
     """.trimIndent()
 
@@ -53,7 +54,7 @@ class TranslationsTest {
             I18n.onMissing = { missing += it }
             try {
                 val pages = listOf(
-                    "/login", "/", "/statistics", "/statistics?range=7d", "/statistics?range=365d&domain=a.test", "/access-log", "/access-log?status=blocked",
+                    "/login", "/", "/statistics", "/statistics?range=7d", "/statistics?range=365d&domain=a.test", "/access-log", "/access-log?status=blocked", "/access-log?status=redirects",
                     "/domains", "/domains/new", "/domains/0", "/domains/0/routes/new", "/domains/0/routes/0", "/domains/0/routes/1", "/domains/0/routes/2", "/domains/0/routes/3",
                     "/backends", "/backends/new", "/backends/app", "/certificates", "/fallback", "/incus", "/access", "/access/new", "/access/p",
                     "/security", "/audit", "/webhooks", "/webhooks/new", "/webhooks/w", "/settings", "/domains/99", "/backends/none", "/access/none", "/webhooks/none",

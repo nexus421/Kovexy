@@ -115,7 +115,7 @@ fun Route.authRoutes(kovexy: Kovexy) {
             }
 
             is ResultOf2.Failure -> {
-                staticLog(KLogger.Level.ERROR, TAG) { t("Cannot start the OIDC login: {0}", start.value) }
+                staticLog(KLogger.Level.ERROR, TAG) { "Cannot start the OIDC login: ${start.value}" }
                 call.loginPage(kovexy, "The identity provider is not reachable. Try again in a moment.", HttpStatusCode.ServiceUnavailable)
             }
         }
@@ -138,7 +138,7 @@ fun Route.authRoutes(kovexy: Kovexy) {
             is ResultOf2.Failure -> {
                 // Busy is nobody's failed login, it is no event and no webhook
                 if (result.value == LoginError.Busy) return@get call.loginPage(kovexy, loginErrorText(result.value), HttpStatusCode.ServiceUnavailable)
-                staticLog(KLogger.Level.WARN, TAG) { t("OIDC login failed: {0}", result.value) }
+                staticLog(KLogger.Level.WARN, TAG) { "OIDC login failed: ${result.value}" }
                 call.failedLogin(kovexy, Actor("unknown", "unknown", call.adminClientIp), "OIDC: ${result.value::class.simpleName}")
                 return@get call.loginPage(kovexy, loginErrorText(result.value), HttpStatusCode.Forbidden)
             }

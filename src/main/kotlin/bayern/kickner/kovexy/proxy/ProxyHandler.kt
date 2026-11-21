@@ -430,7 +430,7 @@ class ProxyHandler(
         call.respond(HttpStatusCode.PermanentRedirect)
     }
 
-    /** The fallback for domains no domain serves (Zoraxy). */
+    /** The fallback for names no domain serves (Zoraxy). */
     private suspend fun fallback(
         call: ApplicationCall,
         table: RoutingTable,
@@ -441,34 +441,34 @@ class ProxyHandler(
     ) {
         val path = normalizePath(rawPath)
         trace.reason = "fallback"
-        when (val domain = table.config.fallback) {
+        when (val fallback = table.config.fallback) {
             is Fallback.Static -> {
-                val root = if (domain.root.isBlank()) File(dataDir, "www") else resolveRoot(domain.root)
-                val result = call.serveStatic(root, rawPath, path, domain.directoryListing) { }
+                val root = if (fallback.root.isBlank()) File(dataDir, "www") else resolveRoot(fallback.root)
+                val result = call.serveStatic(root, rawPath, path, fallback.directoryListing) { }
                 trace.status = result.status
                 trace.bytesOut.set(result.bytes)
             }
 
             is Fallback.Backend -> {
-                val group = pool.group(domain.backend)
-                val root = RouteConfig("/", target = Target.Backend(domain.backend))
+                val group = pool.group(fallback.backend)
+                val root = RouteConfig("/", target = Target.Backend(fallback.backend))
                 if (group == null) respondText(call, trace, badGatewayPage(), ContentType.Text.Html, HttpStatusCode.BadGateway)
                 else forward(call, table, group, root, rawUri, rawPath, path, peer, trace)
             }
 
             is Fallback.Redirect -> {
-                val targetHost = runCatching { java.net.URI(domain.url).host?.lowercase() }.getOrNull()
+                val targetHost = runCatching { java.net.URI(fallback.url).host?.lowercase() }.getOrNull()
                 if (targetHost == trace.host) {
                     // Zoraxy refuses a redirect to the requested domain itself, it would loop forever
                     trace.reason = "redirect loop"
                     respondText(call, trace, neutralPage(500, "Redirect loop", "The fallback redirects to this address itself."), ContentType.Text.Html, HttpStatusCode.InternalServerError)
                     return
                 }
-                val rest = if (domain.keepPath && path != "/") encodePath(path) else ""
-                val query = rawUri.substringAfter('?', "").let { if (it.isEmpty() || domain.keepPath.not()) "" else "?$it" }
-                call.response.headers.append(HttpHeaders.Location, (if (rest.isEmpty()) domain.url else domain.url.trimEnd('/') + rest) + query)
-                trace.status = domain.status
-                call.respond(HttpStatusCode.fromValue(domain.status))
+                val rest = if (fallback.keepPath && path != "/") encodePath(path) else ""
+                val query = rawUri.substringAfter('?', "").let { if (it.isEmpty() || fallback.keepPath.not()) "" else "?$it" }
+                call.response.headers.append(HttpHeaders.Location, (if (rest.isEmpty()) fallback.url else fallback.url.trimEnd('/') + rest) + query)
+                trace.status = fallback.status
+                call.respond(HttpStatusCode.fromValue(fallback.status))
             }
 
             Fallback.NotFound -> respondText(call, trace, notFoundPage(), ContentType.Text.Html, HttpStatusCode.NotFound)

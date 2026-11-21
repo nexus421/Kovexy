@@ -62,10 +62,14 @@ private const val EMPTY_USER_ROWS = 2
 /** HTTP methods offered as checkboxes. */
 private val METHODS = listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 
-/** Every ISO country with its name in the language of the admin UI, sorted by name, for the country selects. */
+/**
+ * Every ISO country with its name in the language of the admin UI, sorted by name the way that language sorts (Österreich
+ * between Oman and Pakistan, not after Z), for the country selects.
+ */
 private fun countries(): List<Pair<String, String>> = countryCache.getOrPut(I18n.language) {
     val locale = Locale.forLanguageTag(I18n.language)
-    Locale.getISOCountries().map { it to Locale.of("", it).getDisplayCountry(locale) }.sortedBy { it.second }
+    val collator = java.text.Collator.getInstance(locale)
+    Locale.getISOCountries().map { it to Locale.of("", it).getDisplayCountry(locale) }.sortedWith(compareBy(collator) { it.second })
 }
 
 private val countryCache = java.util.concurrent.ConcurrentHashMap<String, List<Pair<String, String>>>()
@@ -132,7 +136,7 @@ private suspend fun ApplicationCall.accessPage(kovexy: Kovexy, problems: List<St
     val geo = kovexy.geo.status()
     val version = posted ?: kovexy.configStore.current.version
     page("Access", session, Nav.ACCESS, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
-        pageHeader("Access profiles", "IP and country rules, exploit filter, trap paths, rate limit, methods, captcha, OIDC login and Basic Auth. A domain or route uses a profile by name.") {
+        pageHeader("Access profiles", "IP and country rules, exploit filter, trap paths, rate limit, methods, captcha and Basic Auth. A domain or route uses a profile by name.") {
             linkButton("/access/new", "Add profile", "primary")
         }
         if (problems.isNotEmpty()) problems("Not saved:", problems)
@@ -146,7 +150,7 @@ private suspend fun ApplicationCall.accessPage(kovexy: Kovexy, problems: List<St
                             tr {
                                 td { attributes["data-label"] = t("Profile"); a(href = "/access/${urlPart(profile.name)}") { +profile.name } }
                                 td { attributes["data-label"] = t("Rules"); +profileSummary(profile) }
-                                td { attributes["data-label"] = t("Used by"); +usedBy(config, profile.name).ifEmpty { listOf("nothing") }.joinToString(", ") }
+                                td { attributes["data-label"] = t("Used by"); +usedBy(config, profile.name).ifEmpty { listOf(t("nothing")) }.joinToString(", ") }
                                 td("actions") { linkButton("/access/${urlPart(profile.name)}", "Edit", "sm") }
                             }
                         }
@@ -327,7 +331,7 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
     // Users whose password is not stored yet, after a refused save the password has to be typed again
     val newUsers = users.filter { it.hash.isEmpty() }.map { it.name }.toSet()
     page(title, session, Nav.ACCESS, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
-        pageHeader(title, "Checked in this order: block lists, allow lists, exploit filter and traps, rate limit, methods, captcha, OIDC login, Basic Auth.") {
+        pageHeader(title, "Checked in this order: block lists, allow lists, exploit filter and traps, rate limit, methods, captcha, Basic Auth.") {
             linkButton("/access", "All profiles", "ghost")
         }
         if (problems.isNotEmpty()) problems("Not saved:", problems)
@@ -409,7 +413,7 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                 fold("Captcha", if (profile.captcha == null) "off" else "on", open = problems.isNotEmpty()) {
                     val captcha = profile.captcha
                     checkField("Ask for a Google reCAPTCHA", "captchaEnabled", captcha != null,
-                        "visitors see a check page with 403 until they pass it, only on domains that are reachable over HTTPS alone. This sends visitor data to Google")
+                        "visitors see a check page with 403 until they pass it. This sends visitor data to Google")
                     textField("Valid for", "captchaDuration", (captcha?.sessionDuration ?: CaptchaConfig().sessionDuration).toString(), required = false,
                         hint = t("Then the visitor is asked again. Solved captchas live in memory, a restart asks once more."))
                     textAreaField("Only these paths", "captchaPaths", captcha?.protectedPaths.orEmpty().joinToString("\n"), rows = 2,

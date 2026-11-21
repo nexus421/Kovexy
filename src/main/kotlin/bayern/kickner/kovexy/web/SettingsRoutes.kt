@@ -362,8 +362,8 @@ private fun shortUserAgent(userAgent: String): String {
     val system = listOf("Windows" to "Windows", "Android" to "Android", "iPhone" to "iOS", "iPad" to "iOS", "Mac OS X" to "macOS", "Linux" to "Linux")
         .firstOrNull { (marker, _) -> marker in userAgent }?.second
     return when {
-        browser != null && system != null -> "$browser on $system"
+        browser != null && system != null -> t("{0} on {1}", browser, system)
         browser != null -> browser
-        else -> userAgent.take(60).ifEmpty { "unknown" }
+        else -> userAgent.take(60).ifEmpty { t("unknown") }
     }
 }

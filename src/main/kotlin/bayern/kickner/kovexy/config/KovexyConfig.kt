@@ -63,7 +63,7 @@ const val LETS_ENCRYPT_STAGING = "https://acme-staging-v02.api.letsencrypt.org/d
  * @property acme Certificates from an ACME CA.
  * @property listeners Ports the proxy listens on. Fixed to 80 and 443 in phase 1.
  * @property trustedProxies IPs or CIDR ranges whose `X-Forwarded-*` headers are believed.
- * @property fallback What happens for a domain no domain serves.
+ * @property fallback What happens for a name no domain serves.
  * @property accessProfiles Reusable access profiles for domains and routes.
  * @property aiCrawlers Changes to the shipped AI crawler list, for every profile.
  * @property incus Discovery of Incus containers.
@@ -202,7 +202,7 @@ data class AcmeConfig(
 /**
  * A port the proxy listens on.
  *
- * @property name Referenced by [DomainConfig.listeners].
+ * @property name `http` or `https`, the proxy tells by it on which port a request arrived.
  * @property port TCP port.
  * @property tls Whether the port speaks TLS.
  */
@@ -265,7 +265,7 @@ data class HealthCheckConfig(
 )
 
 /**
- * A domain: one or more domains with their routes. Always reachable over HTTPS only, plain HTTP on port 80 is
+ * A domain: one or more names with their routes. Always reachable over HTTPS only, plain HTTP on port 80 is
  * redirected for every host and never reaches a domain.
  *
  * @property names Exact domain names, e.g. `example.com` and `www.example.com`. Each gets its own certificate.
@@ -363,7 +363,7 @@ sealed interface Target {
     data class Deny(val status: Int = 404, val html: String = "") : Target
 }
 
-/** What happens for a domain no domain serves. */
+/** What happens for a name no domain serves. */
 @Serializable
 sealed interface Fallback {
     /**

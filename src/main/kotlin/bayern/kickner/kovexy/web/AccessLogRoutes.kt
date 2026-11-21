@@ -27,16 +27,18 @@ fun Route.accessLogRoutes(kovexy: Kovexy) {
         val domains = kovexy.config.domains.map { it.names.first() }
         val domain = params["domain"]?.takeIf { it != "*" }
         val blockedOnly = params["status"] == "blocked"
+        val redirectsOnly = params["status"] == "redirects"
         val status = params["status"]?.toIntOrNull()?.takeIf { it in 1..5 }
         val search = params["q"]?.trim()?.take(200)
-        val entries = kovexy.accessLog.latest(domain, status, search, PAGE_SIZE, blockedOnly)
+        val entries = kovexy.accessLog.latest(domain, status, search, PAGE_SIZE, blockedOnly, redirectsOnly)
         call.page("Access log", call.session, Nav.ACCESS_LOG) {
             pageHeader("Access log", t("One line per request, newest first. The query string is never stored, it often holds tokens. Kept {0}.", kovexy.config.retention.accessLog))
             card {
                 form(action = "/access-log", method = FormMethod.get, classes = "filters") {
-                    selectField("Domain", "domain", domain ?: "*", listOf("*" to "All domains", "" to "Fallback") + domains.map { it to it }, autosubmit = true)
-                    selectField("Status", "status", if (blockedOnly) "blocked" else status?.toString() ?: "", listOf("" to "All", "2" to "2xx", "3" to "3xx", "4" to "4xx", "5" to "5xx", "blocked" to "Blocked"), autosubmit = true)
-                    textField("Search", "q", search.orEmpty(), required = false, placeholder = t("path, IP or domain"))
+                    selectField("Domain", "domain", domain ?: "*", listOf("*" to "All domains", "" to "Fallback") + domains.map { it to it }, autosubmit = true, help = "accessLog.domain")
+                    selectField("Status", "status", params["status"]?.takeIf { blockedOnly || redirectsOnly } ?: status?.toString() ?: "",
+                        listOf("" to "All", "2" to "2xx", "3" to "3xx", "4" to "4xx", "5" to "5xx", "blocked" to "Blocked", "redirects" to "HTTPS redirects"), autosubmit = true, help = "accessLog.status")
+                    textField("Search", "q", search.orEmpty(), required = false, placeholder = t("path, IP or domain"), help = "accessLog.q")
                     submit("Filter", "")
                 }
             }
@@ -71,6 +73,11 @@ fun Route.accessLogRoutes(kovexy: Kovexy) {
                     }
                 }
                 if (entries.size == PAGE_SIZE) p("muted small gap-top") { +t("Showing the newest {0} entries. Narrow the filter to see older ones.", PAGE_SIZE) }
+                // The statistics and the tiles of the status page count these domains too, the list cannot show them
+                val unlogged = kovexy.config.domains.filter { it.accessLog.not() }.map { it.names.first() }
+                if (unlogged.isNotEmpty()) p("muted small gap-top") {
+                    +t("These domains have the access log turned off, their requests are counted in the statistics but not listed here: {0}", unlogged.joinToString(", "))
+                }
             }
         }
     }
