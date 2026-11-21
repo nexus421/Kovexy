@@ -406,9 +406,12 @@ private suspend fun ApplicationCall.routeForm(kovexy: Kovexy, domain: Int, index
                     textField("Status code", "denyStatus", form.denyStatus, required = false, type = kotlinx.html.InputType.number)
                     textAreaField("Own HTML page", "html", form.html, rows = 4, hint = "Optional, otherwise a neutral page.")
                 }
-                textAreaField("Request headers to the backend", "requestHeaders", form.requestHeaders, rows = 3, hint = "One per line: set Name: value, add Name: value, remove Name")
-                textAreaField("Response headers to the visitor", "responseHeaders", form.responseHeaders, rows = 4, hint = "Same format. Remove only works for backend answers.")
-                div("btn-row") {
+                val headerCount = form.requestHeaders.lines().count { it.isNotBlank() } + form.responseHeaders.lines().count { it.isNotBlank() }
+                fold("Headers", if (headerCount == 0) "none" else "$headerCount rules", open = headerCount > 0 || problems.isNotEmpty()) {
+                    textAreaField("Request headers to the backend", "requestHeaders", form.requestHeaders, rows = 3, hint = "One per line: set Name: value, add Name: value, remove Name")
+                    textAreaField("Response headers to the visitor", "responseHeaders", form.responseHeaders, rows = 4, hint = "Same format. Remove only works for backend answers.")
+                }
+                div("btn-row sticky-save") {
                     submit("Save route", name = "action", value = "save")
                     submit("Add security headers", "", name = "action", value = "security-headers")
                 }

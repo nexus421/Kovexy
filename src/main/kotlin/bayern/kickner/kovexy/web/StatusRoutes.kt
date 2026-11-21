@@ -79,13 +79,13 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
     val certProblems = certs.count { it.lastError != null || it.notAfter == null || it.notAfter - now < EXPIRY_WARNING.inWholeMilliseconds }
 
     div("stats-grid") {
-        stat("${config.domains.count { it.enabled }} / ${config.domains.size}", "Domains enabled")
-        stat("${servers.count { it.healthy }} / ${servers.size}", "Backend servers up")
-        stat("${certs.size - certProblems} / ${certs.size}", "Certificates fine")
-        stat(requestsToday.toString(), "Requests today")
-        stat(blockedToday.toString(), "Blocked today")
-        stat(redirectsToday.toString(), "HTTPS redirects today")
-        stat(errorsToday.toString(), "5xx answers today")
+        stat("${config.domains.count { it.enabled }} / ${config.domains.size}", "Domains enabled", "/domains")
+        stat("${servers.count { it.healthy }} / ${servers.size}", "Backend servers up", "/backends")
+        stat("${certs.size - certProblems} / ${certs.size}", "Certificates fine", "/certificates")
+        stat(requestsToday.toString(), "Requests today", "/statistics")
+        stat(blockedToday.toString(), "Blocked today", "/access-log?status=blocked")
+        stat(redirectsToday.toString(), "HTTPS redirects today", "/access-log?status=3")
+        stat(errorsToday.toString(), "5xx answers today", "/access-log?status=5")
         stat(kovexy.webSockets.count.toString(), "Open WebSockets")
     }
 

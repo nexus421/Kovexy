@@ -330,36 +330,31 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
             form(action = action, method = FormMethod.post, classes = "form") {
                 versionField(version)
                 textField("Name", "name", profile.name, hint = "Domains and routes refer to the profile by this name. Renaming updates them.")
-                fieldSet {
-                    legend { +"Block list" }
+                fold("Block list", (profile.denyIps.size + profile.denyCountries.size).let { if (it == 0) "empty" else "$it entries" }, open = problems.isNotEmpty()) {
                     p("muted small") { +"Matching visitors get 403. Countries only count when the country of the IP is known." }
                     textAreaField("IPs and ranges", "denyIps", profile.denyIps.joinToString("\n"), rows = 2, hint = "One per line, e.g. 203.0.113.7 or 198.51.100.0/24")
                     countrySelect("Countries", "denyCountries", profile.denyCountries)
                 }
-                fieldSet {
-                    legend { +"Allow list" }
+                fold("Allow list", (profile.allowIps.size + profile.allowCountries.size).let { if (it == 0) "empty" else "$it entries" }, open = problems.isNotEmpty()) {
                     p("muted small") { +"If one of the lists is filled, only matching visitors get in. An IP whose country is unknown gets in when only countries are listed." }
                     textAreaField("IPs and ranges", "allowIps", profile.allowIps.joinToString("\n"), rows = 2)
                     countrySelect("Countries", "allowCountries", profile.allowCountries)
                     checkField("Always allow private and loopback addresses", "allowLocal", profile.allowLocal)
                 }
-                fieldSet {
-                    legend { +"Exploit filter" }
+                fold("Exploit filter", if (profile.exploitFilter.commonExploits || profile.exploitFilter.aiBots) "on" else "off", open = problems.isNotEmpty()) {
                     checkField("Block common exploits", "commonExploits", profile.exploitFilter.commonExploits, "SQL and file injection, script tags, spam, known tools (patterns of Nginx Proxy Manager)")
                     checkField("Block AI crawlers", "aiBots", profile.exploitFilter.aiBots, "by user agent, list of ai.robots.txt")
                     selectField("Answer", "exploitResponse", profile.exploitFilter.response.name, listOf(
                         "FORBIDDEN" to "403 Forbidden", "NOT_FOUND" to "404 Not Found", "BAD_REQUEST" to "400 Bad Request", "DROP" to "Empty answer (204), then close"
                     ))
                 }
-                fieldSet {
-                    legend { +"Trap paths" }
+                fold("Trap paths", if (profile.trapPaths.enabled) "on" else "off", open = problems.isNotEmpty()) {
                     checkField("Ban whoever calls a trap path", "trapsEnabled", profile.trapPaths.enabled, "the ban counts for all domains")
                     textAreaField("Paths", "trapPaths", profile.trapPaths.paths.joinToString("\n"), rows = 5,
                         hint = "Path prefixes, one per line. A route with match exact for exactly that path still works. Default: ${DEFAULT_TRAP_PATHS.size} typical scanner targets.")
                     textField("Ban duration", "banDuration", profile.trapPaths.banDuration.toString())
                 }
-                fieldSet {
-                    legend { +"Rate limit" }
+                fold("Rate limit", profile.rateLimit?.let { "${it.requestsPerSecond} per second" } ?: "off", open = problems.isNotEmpty()) {
                     checkField("Limit requests per IP", "rateEnabled", profile.rateLimit != null, "more get 429")
                     div("grid-2") {
                         textField("Requests per second", "rps", (profile.rateLimit?.requestsPerSecond ?: 20).toString(), type = InputType.number, required = false)
@@ -367,15 +362,13 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                             hint = "IPv6 addresses count per prefix, a household usually has a whole /64.")
                     }
                 }
-                fieldSet {
-                    legend { +"Allowed methods" }
+                fold("Allowed methods", if (profile.allowedMethods.isEmpty()) "all" else profile.allowedMethods.joinToString(", "), open = problems.isNotEmpty()) {
                     p("muted small") { +"All ticked means all methods are allowed. Others get 405." }
                     div("btn-row") {
                         METHODS.forEach { method -> checkField(method, "method.$method", profile.allowedMethods.isEmpty() || method in profile.allowedMethods) }
                     }
                 }
-                fieldSet {
-                    legend { +"Basic Auth" }
+                fold("Basic Auth", if (profile.basicAuth == null) "off" else "on, ${users.size} users", open = problems.isNotEmpty()) {
                     checkField("Require a login", "basicEnabled", profile.basicAuth != null, "passwords are stored as bcrypt hash")
                     textField("Realm", "realm", profile.basicAuth?.realm ?: "Restricted", required = false)
                     hiddenInput(name = "userCount") { value = (users.size + EMPTY_USER_ROWS).toString() }
@@ -408,8 +401,7 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                     textAreaField("Exceptions", "exceptions", exceptionsText(profile.basicAuth?.exceptions.orEmpty()),
                         rows = 2, hint = "No login needed for: path /public or cidr 192.168.1.0/24, one per line.")
                 }
-                fieldSet {
-                    legend { +"Captcha" }
+                fold("Captcha", if (profile.captcha == null) "off" else "on", open = problems.isNotEmpty()) {
                     val captcha = profile.captcha
                     checkField("Ask for a Google reCAPTCHA", "captchaEnabled", captcha != null,
                         "visitors see a check page with 403 until they pass it, only on domains that are reachable over HTTPS alone. This sends visitor data to Google")
@@ -432,7 +424,7 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                         textField("Minimum score (v3)", "recaptchaScore", (captcha?.recaptchaScore ?: 0.5).toString(), required = false, hint = "0 to 1, Google suggests 0.5.")
                     }
                 }
-                div("btn-row") { submit("Save profile") }
+                div("btn-row sticky-save") { submit("Save profile") }
             }
         }
         if (name != null) card("Delete profile", "danger gap-top") {

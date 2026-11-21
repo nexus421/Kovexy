@@ -100,7 +100,7 @@ exceptions, injectable `clock`, `staticLog` with `private const val TAG`, timest
 `Common.kt`, KDoc on every public declaration. No em dashes, no en dashes and no semicolons in prose (README, KDoc,
 comments, UI strings). Code, KDoc, comments and README are English, the concept stays German.
 
-UI: building blocks (`page`, `pageHeader`, `card`, `postButton`, form fields) are in `web/Layout.kt`, styles in
+UI: building blocks (`page`, `pageHeader`, `card`, `fold` for sections that fold away, `postButton`, form fields) are in `web/Layout.kt`, styles in
 `static/app.css` (based on Dirl, light and dark through CSS variables, tables stack on phones). The navigation is a
 sidebar with four groups (`Nav` and `NavGroup` in `web/Layout.kt`), on phones a `<details>` menu without
 JavaScript. A new page needs a `Nav` entry in its group. Check new pages in the browser at desktop and phone width.

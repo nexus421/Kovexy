@@ -224,8 +224,7 @@ private suspend fun ApplicationCall.backendForm(kovexy: Kovexy, name: String?, g
                     }
                 }
                 checkField("Sticky sessions", "sticky", group.stickySession, "a cookie sends a visitor to the same server again")
-                fieldSet {
-                    legend { +"Active health check" }
+                fold("Active health check", if (group.healthCheck.path.isEmpty()) "passive only" else group.healthCheck.path, open = group.healthCheck.path.isNotEmpty() || problems.isNotEmpty()) {
                     p("muted small") { +"Without a path servers are only checked passively: a connection error marks a server down, it is tried again every 30 seconds." }
                     div("grid-2") {
                         textField("Path", "healthPath", group.healthCheck.path, placeholder = "/health", required = false)
@@ -234,7 +233,7 @@ private suspend fun ApplicationCall.backendForm(kovexy: Kovexy, name: String?, g
                         textField("Timeout", "timeout", group.healthCheck.timeout.toString())
                     }
                 }
-                div("btn-row") { submit("Save backend") }
+                div("btn-row sticky-save") { submit("Save backend") }
             }
         }
         if (name != null) card("Delete backend", "danger gap-top") {

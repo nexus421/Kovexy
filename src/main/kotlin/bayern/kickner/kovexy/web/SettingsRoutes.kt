@@ -230,7 +230,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                         }
                         p("muted small") { +"OIDC needs the public URL below. In an emergency the command line switches back: java -jar kovexy.jar login-mode=password" }
                     }
-                    fieldSet {
+                    div("oidc-fields") { fieldSet {
                         legend { +"OIDC provider" }
                         textField("Issuer", "issuer", v("issuer", oidc?.issuer.orEmpty()), required = false, placeholder = "https://id.example.com",
                             hint = "Exactly as the provider reports it. Callback URL to register: ${config.admin.publicUrl.ifEmpty { "<public URL>" }}/auth/callback")
@@ -249,17 +249,20 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                             hint = "sub claims that may log in, one per line. Empty: everybody the provider lets through, then restrict the client to a group at the provider.")
                         textField("Scopes", "scopes", v("scopes", (oidc?.scopes ?: listOf("openid", "profile")).joinToString(" ")), required = false)
                         checkField("Ask for a fresh sign in every time", "forceReauth", c("forceReauth", "issuer", oidc?.forceReauth ?: true))
-                    }
+                    } }
                     div("btn-row") { submit("Save login settings") }
                 }
-                form(action = "/settings/password", method = FormMethod.post, classes = "form gap-top") {
+            }
+            card("Password") {
+                form(action = "/settings/password", method = FormMethod.post, classes = "form") {
                     passwordField("Current password", "current", "current-password")
                     passwordField("New password", "new", "new-password", hint = "At least $MIN_PASSWORD_LENGTH characters.")
                     passwordField("Repeat new password", "repeat", "new-password")
                     div("btn-row") { submit("Change password") }
                 }
             }
-            card("Sessions") {
+        }
+        card("Sessions", "gap-top") {
                 val sessions = kovexy.sessions.list()
                 div("table-wrap") {
                     table("stack-mobile") {
@@ -269,7 +272,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                                 tr {
                                     td("nowrap") { attributes["data-label"] = "Since"; +formatTimestamp(s.createdAt) }
                                     td { attributes["data-label"] = "From"; +s.ip; if (s.id == session.id) span("muted small") { +" (this one)" } }
-                                    td { attributes["data-label"] = "Browser"; span("small break") { +s.userAgent } }
+                                    td { attributes["data-label"] = "Browser"; span("small break") { attributes["title"] = s.userAgent; +shortUserAgent(s.userAgent) } }
                                 }
                             }
                         }
@@ -277,12 +280,10 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                 }
                 div("btn-row gap-top") { postButton("/settings/sessions/end-others", "End all other sessions", "danger", confirm = "End every other session?") }
             }
-        }
-        card("Admin UI, proxy and data", "gap-top") {
+        card("Server settings", "gap-top") {
             form(action = "/settings", method = FormMethod.post, classes = "form") {
                 versionField(version)
-                fieldSet {
-                    legend { +"Admin UI" }
+                fold("Admin UI", "${config.admin.host}:${config.admin.port}", open = problems.isNotEmpty()) {
                     div("grid-2") {
                         textField("Address", "adminHost", v("adminHost", config.admin.host), hint = "127.0.0.1 keeps it local. Changing it moves the UI at once. Browsers keep the login only on localhost or over HTTPS through the public URL.")
                         textField("Port", "adminPort", v("adminPort", config.admin.port.toString()), type = InputType.number)
@@ -294,8 +295,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                         textField("Session maximum age", "maxAge", v("maxAge", config.admin.session.maxAge.toString()))
                     }
                 }
-                fieldSet {
-                    legend { +"Proxy" }
+                fold("Proxy and limits", state = null, open = problems.isNotEmpty()) {
                     textAreaField("Trusted proxies", "trustedProxies", v("trustedProxies", config.trustedProxies.joinToString("\n")), rows = 2,
                         hint = "IPs or ranges like 192.168.1.0/24 whose X-Forwarded-For is believed. Usually empty.")
                     div("grid-2") {
@@ -313,8 +313,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                             hint = "Open WebSockets are closed after a config change, after this delay.")
                     }
                 }
-                fieldSet {
-                    legend { +"Data" }
+                fold("Data and updates", "keeps the access log ${config.retention.accessLog}", open = problems.isNotEmpty()) {
                     div("grid-2") {
                         textField("Keep the access log", "retentionAccessLog", v("retentionAccessLog", config.retention.accessLog.toString()))
                         textField("Keep hourly statistics", "retentionHourly", v("retentionHourly", config.retention.hourlyStats.toString()))
@@ -323,7 +322,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                     }
                     checkField("Check for updates", "updateCheck", c("updateCheck", "adminHost", config.updateCheck), "asks GitHub at most once an hour while the UI is used")
                 }
-                div("btn-row") { submit("Save settings") }
+                div("btn-row sticky-save") { submit("Save settings") }
             }
         }
         div("columns gap-top") {
@@ -346,5 +345,21 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                 }
             }
         }
+    }
+}
+
+/**
+ * A short name for a session list, like "Firefox on Linux". The full text is the tooltip. Anything not recognized shows the
+ * first characters of the text.
+ */
+private fun shortUserAgent(userAgent: String): String {
+    val browser = listOf("Edg/" to "Edge", "OPR/" to "Opera", "Firefox/" to "Firefox", "Chrome/" to "Chrome", "Safari/" to "Safari", "curl/" to "curl")
+        .firstOrNull { (marker, _) -> marker in userAgent }?.second
+    val system = listOf("Windows" to "Windows", "Android" to "Android", "iPhone" to "iOS", "iPad" to "iOS", "Mac OS X" to "macOS", "Linux" to "Linux")
+        .firstOrNull { (marker, _) -> marker in userAgent }?.second
+    return when {
+        browser != null && system != null -> "$browser on $system"
+        browser != null -> browser
+        else -> userAgent.take(60).ifEmpty { "unknown" }
     }
 }

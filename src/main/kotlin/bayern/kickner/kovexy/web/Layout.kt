@@ -407,8 +407,28 @@ fun FlowContent.submit(label: String, kind: String = "primary", name: String? = 
 /** The hidden field with the config version a form is based on, see [bayern.kickner.kovexy.config.LoadedConfig]. */
 fun FlowContent.versionField(version: String) = hiddenInput(name = "version") { value = version }
 
-/** A number tile of the status and statistics pages. */
-fun FlowContent.stat(value: String, label: String) = div("stat") {
-    div("value") { +value }
-    div("label") { +label }
+/** A number tile of the status and statistics pages. With [href] the whole tile is a link to the page behind the number. */
+fun FlowContent.stat(value: String, label: String, href: String? = null) {
+    if (href == null) div("stat") {
+        div("value") { +value }
+        div("label") { +label }
+    } else a(href = href, classes = "stat") {
+        div("value") { +value }
+        div("label") { +label }
+    }
 }
+
+/**
+ * A section that folds away, closed by default so a long page stays short. [state] is a short note beside the title that
+ * stays visible when the section is closed, e.g. "on" or "3 entries". Open it with [open] for what is needed most and
+ * after a refused save, so the fields with the problem are not hidden. The fields of a closed section are still sent.
+ */
+fun FlowContent.fold(title: String, state: String? = null, open: Boolean = false, content: DIV.() -> Unit) =
+    details("fold") {
+        if (open) attributes["open"] = "open"
+        summary("fold-title") {
+            span("fold-name") { +title }
+            if (state != null) span("fold-state") { +state }
+        }
+        div("fold-body") { content() }
+    }
