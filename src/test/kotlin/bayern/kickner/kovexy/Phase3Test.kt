@@ -104,7 +104,7 @@ class CaptchaUnitTest {
         server.start()
         try {
             val verifier = GoogleVerifier("http://127.0.0.1:${server.address.port}/siteverify")
-            val v2 = CaptchaConfig("site", "the secret")
+            val v2 = CaptchaConfig("domain", "the secret")
             val v3 = v2.copy(recaptchaVersion = RecaptchaVersion.V3, recaptchaScore = 0.5)
             assertTrue(verifier.verify(v2, "token-1", "203.0.113.7"))
             assertTrue(received.last().contains("secret=the+secret") && received.last().contains("response=token-1") && received.last().contains("remoteip=203.0.113.7"), received.last())
@@ -127,8 +127,8 @@ class CaptchaUnitTest {
         val base = KovexyConfig()
         val captcha = base.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig())))
         assertTrue(validateConfig(captcha).any { it.contains("siteKey") }, validateConfig(captcha).toString())
-        val withSite = captcha.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig("k", "s"))), sites = listOf(bayern.kickner.kovexy.config.SiteConfig(listOf("a.test"), access = "c")))
-        assertTrue(validateConfig(withSite).isEmpty(), "Every site is HTTPS only, so a captcha profile is fine on any site: ${validateConfig(withSite)}")
+        val withDomain = captcha.copy(accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig("k", "s"))), domains = listOf(bayern.kickner.kovexy.config.DomainConfig(listOf("a.test"), access = "c")))
+        assertTrue(validateConfig(withDomain).isEmpty(), "Every domain is HTTPS only, so a captcha profile is fine on any domain: ${validateConfig(withDomain)}")
         val before = rootCheck
         try {
             rootCheck = { false }
@@ -138,8 +138,8 @@ class CaptchaUnitTest {
         } finally {
             rootCheck = before
         }
-        val upstream = base.copy(upstreams = listOf(bayern.kickner.kovexy.config.UpstreamConfig("incus:x", listOf(bayern.kickner.kovexy.config.UpstreamServerConfig("127.0.0.1:1")))))
-        assertTrue(validateConfig(upstream).any { it.contains("incus:") })
+        val backend = base.copy(backends = listOf(bayern.kickner.kovexy.config.BackendConfig("incus:x", listOf(bayern.kickner.kovexy.config.BackendServerConfig("127.0.0.1:1")))))
+        assertTrue(validateConfig(backend).any { it.contains("incus:") })
     }
 
     @Test
@@ -147,7 +147,7 @@ class CaptchaUnitTest {
         val admin = bayern.kickner.kovexy.config.AdminConfig()
         val old = KovexyConfig(
             admin = admin.copy(oidc = bayern.kickner.kovexy.config.OidcConfig(issuer = "http://localhost:1", clientId = "id", clientSecret = "old-admin-secret")),
-            accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig("site", "old-google-secret"))),
+            accessProfiles = listOf(bayern.kickner.kovexy.config.AccessProfile("c", captcha = CaptchaConfig("domain", "old-google-secret"))),
         )
         val new = old.copy(
             admin = old.admin.copy(oidc = old.admin.oidc!!.copy(clientSecret = "new-admin-secret")),
@@ -168,8 +168,8 @@ class StatisticsPhase3Test {
         val log = AccessLog(storage)
         val now = System.currentTimeMillis()
         fun record(ip: String, duration: Long, status: Int = 200, reason: String = "") = log.record(
-            AccessRecord(time = now, clientIp = ip, method = "GET", domain = "a.test", path = "/p", status = status, bytesIn = 0, bytesOut = 0,
-                durationMs = duration, site = "a.test", location = "/", upstream = "127.0.0.1:1", userAgent = "UA", reason = reason,
+            AccessRecord(time = now, clientIp = ip, method = "GET", host = "a.test", path = "/p", status = status, bytesIn = 0, bytesOut = 0,
+                durationMs = duration, domain = "a.test", route = "/", backend = "127.0.0.1:1", userAgent = "UA", reason = reason,
                 referer = "https://ref.test/page", country = "DE")
         )
         repeat(TOP_LIST_SIZE + 50) { record("10.0.${it / 250}.${it % 250}", 5) }
@@ -207,8 +207,8 @@ class StatisticsPhase3Test {
         assertEquals("::1", bayern.kickner.kovexy.config.plainAddress("[::1]"))
         assertEquals("127.0.0.1", bayern.kickner.kovexy.config.plainAddress("127.0.0.1"))
         TestBackend().use { backend ->
-            val config = """{ "admin": { "port": ADMIN_PORT }, "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] } ],
-                "sites": [ { "domains": ["a.test"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ] }"""
+            val config = """{ "admin": { "port": ADMIN_PORT }, "backends": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] } ],
+                "domains": [ { "names": ["a.test"], "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] } ] }"""
             Harness(config).use { h ->
                 val socket = runCatching { trustAllContext.socketFactory.createSocket("::1", h.ports.https) }.getOrNull() ?: return@use
                 socket.use { s ->
@@ -304,7 +304,7 @@ class IncusTest {
         assertEquals(6, instances.size)
         assertEquals("127.0.0.1", instances.first().address)
         assertTrue(instances.first { it.name == "db" }.keys.isEmpty(), "Keys of a profile (expanded_config) do not count")
-        val config = KovexyConfig(sites = listOf(bayern.kickner.kovexy.config.SiteConfig(listOf("manual.test"))))
+        val config = KovexyConfig(domains = listOf(bayern.kickner.kovexy.config.DomainConfig(listOf("manual.test"))))
         var claims = buildClaims(instances, emptyList(), config)
         assertEquals(listOf("default/bad", "default/noip", "default/stopped", "default/web1"), claims.map { it.id }, "Other projects and instances without keys are left out")
         val web1 = claims.first { it.id == "default/web1" }
@@ -324,8 +324,8 @@ class IncusTest {
         assertFalse(claims.first { it.id == "default/stopped" }.live, "Stopped instances have no route")
         assertFalse(claims.first { it.id == "default/noip" }.live, "No address, no route")
         val effective = withIncusRoutes(config, claims)
-        assertEquals(2, effective.sites.size)
-        assertEquals("127.0.0.1:8080", effective.upstreams.single().servers.single().address)
+        assertEquals(2, effective.domains.size)
+        assertEquals("127.0.0.1:8080", effective.backends.single().servers.single().address)
 
         val changed = buildClaims(instances, listOf(IncusDecision("default", "web1", listOf("app.test"), true, 0)), config)
         assertEquals(IncusState.DETECTED, changed.first { it.id == "default/web1" }.state, "New domains need a new approval")
@@ -350,7 +350,7 @@ class IncusTest {
                         FakeIncus.instance("web1", keys = mapOf("domains" to "c.test", "port" to backend.port.toString())),
                         FakeIncus.instance("plain"),
                     )
-                    val config = """{ "admin": { "port": ADMIN_PORT }, "incus": { "enabled": true, "socket": "$socket" }, "defaultSite": { "type": "notFound" } }"""
+                    val config = """{ "admin": { "port": ADMIN_PORT }, "incus": { "enabled": true, "socket": "$socket" }, "fallback": { "type": "notFound" } }"""
                     Harness(config).use { h ->
                         waitFor("connected") { h.kovexy.incus.connected && h.kovexy.incus.claims.isNotEmpty() }
                         assertTrue(incus.requests.first().startsWith("/1.0/events?type=lifecycle&all-projects=true"), "Events are subscribed before the list is fetched: ${incus.requests}")
@@ -397,7 +397,7 @@ class IncusTest {
         }
     }
 
-    /** Status over HTTPS, approved containers get the HTTPS redirect like every new site. */
+    /** Status over HTTPS, approved containers get the HTTPS redirect like every new domain. */
     private fun status(h: Harness, host: String, path: String) = rawRequest(h.ports.https, host, path, tls = true).status
 
     private suspend fun waitFor(what: String, seconds: Int = 10, check: () -> Boolean) {

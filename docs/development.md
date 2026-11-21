@@ -11,17 +11,17 @@ English, the German concept lives outside the repository.
 
 The fat JAR is `build/libs/kovexy.jar`.
 
-The tests use real ports: a small Ktor CIO server plays the upstream, requests go over plain sockets and TLS with
+The tests use real ports: a small Ktor CIO server plays the backend, requests go over plain sockets and TLS with
 SNI. Covered: certificate per domain and fallback, certificate swaps under load without errors, admin port moved
 while running, HTTP/2 (needs `curl`), WebSocket through an idle timeout and closing after a config change, 50 MB
 download and 20 MB upload streamed, an invalid file changing nothing, routing, headers, redirects, static files,
-default site, load balancing, health checks, sticky sessions, admin UI guards and forms, backup, renewal backoff,
-webhook bundling. Phase 2: IP lists, location profile replacing the site profile, trap paths banning for all sites
+fallback, load balancing, health checks, sticky sessions, admin UI guards and forms, backup, renewal backoff,
+webhook bundling. Phase 2: IP lists, route profile replacing the domain profile, trap paths banning for all domains
 with lift and expiry, exploit filter, AI crawlers, rate limit, methods, Basic Auth, connection limit changed while
 running (with TLS), OIDC login in the modes `oidc` and `both` against a mock provider, audit diff without secrets,
 country data refused on a wrong checksum. Phase 3: reCAPTCHA end to end against a fake Google endpoint (v2 and v3, wrong
 answer, scope per profile and domain, cookie not forwarded), no captcha way past the exploit filter, the rate limit on
-`/.kovexy/`, forged identity headers dropped, no login paths of Kovexy on a site, Incus discovery against a fake Incus API on a unix socket (Ktor CIO server: events
+`/.kovexy/`, forged identity headers dropped, no login paths of Kovexy on a domain, Incus discovery against a fake Incus API on a unix socket (Ktor CIO server: events
 before the list, approve, stop, start, changed domains, remove, reconnect), top lists with the space saving limit,
 percentiles, retention of top IPs, IPv6 peers without brackets. After the Phase 2 decisions: expired certificates of
 unused domains removed, Basic Auth passwords of any length with hint, AI crawler list changed live.
@@ -48,7 +48,7 @@ another one.
 ```
 
 Proxy on 18080 (plain) and 18443 (TLS), admin UI on `http://localhost:18000` with the login mode `oidc` against the
-mock OIDC provider from the test sources on port 18001 (pick a user, no password), two demo upstreams behind
+mock OIDC provider from the test sources on port 18001 (pick a user, no password), two demo backends behind
 `http://app.localhost:18080` with the access profile `demo-protection`. The password `kovexy dev password only` is set
 as well, for switching the login mode. Data in `build/dev`, delete it to start over. ACME uses Let's
 Encrypt staging there and fails, because nobody can reach the machine, that is expected.
@@ -84,14 +84,14 @@ tarballs, check the `integrity` value of the registry and update `SHA256SUMS`.
 | `bayern.kickner.kovexy` | `Main.kt` (command line), `Kovexy.kt` (wiring, live apply), `Common.kt`, `UpdateCheck.kt` |
 | `config` | Data model, validation, `ConfigStore` (atomic writes, backups, file watcher), network helpers |
 | `tls` | `DynamicKeyManager`, `CertStore`, `CertificateManager` (renewal, backoff), acme4j issuer |
-| `proxy` | Jetty server and connectors, routing table, `ProxyHandler`, upstream state, load balancing, health checks, WebSocket relay, headers |
+| `proxy` | Jetty server and connectors, routing table, `ProxyHandler`, backend state, load balancing, health checks, WebSocket relay, headers |
 | `site` | Static files, neutral pages |
 | `web` | Admin UI: guards, layout, pages, SVG charts |
 | `auth` | Password hashing, sessions, login lockout |
 | `stats` | SQLite through Exposed, access log and statistics writer |
 | `notify` | Events and webhooks |
 | `access` | Access profiles: country data, exploit patterns, rate limit, bans, Basic Auth, captcha |
-| `incus` | Incus discovery: API over the unix socket, claims, decisions, dynamic routes |
+| `incus` | Incus discovery: API over the unix socket, claims, decisions, dynamic domains |
 | `audit` | Audit log, security events, config diff |
 | `backup` | Backup and restore |
 
@@ -105,9 +105,9 @@ tarballs, check the `integrity` value of the registry and update `SHA256SUMS`.
 | `/security`, `POST /security/lift` | Bans and security events |
 | `/audit` | Audit log |
 | `GET /`, `GET /status/events` | Status page and its SSE stream |
-| `/sites`, `/sites/{i}`, `/sites/{i}/locations/{j}` | Sites and locations |
-| `/upstreams`, `/upstreams/{name}` | Upstream groups |
-| `/default-site` | Default site |
+| `/domains`, `/domains/{i}`, `/domains/{i}/routes/{j}` | Domains and routes |
+| `/backends`, `/backends/{name}` | Backends |
+| `/fallback` | Fallback |
 | `/certificates`, `POST /certificates/acme`, `POST /certificates/renew` | Certificates |
 | `/statistics`, `/statistics/chart.svg` | Statistics and charts |
 | `/access-log` | Access log |

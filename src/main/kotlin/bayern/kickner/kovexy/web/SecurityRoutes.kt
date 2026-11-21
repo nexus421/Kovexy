@@ -34,13 +34,13 @@ fun Route.securityRoutes(kovexy: Kovexy) {
                 if (bans.isEmpty()) p("muted") { +"Nobody is banned." }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Address" }; th { +"Reason" }; th { +"Site" }; th { +"Until" }; th { } } }
+                        thead { tr { th { +"Address" }; th { +"Reason" }; th { +"Domain" }; th { +"Until" }; th { } } }
                         tbody {
                             bans.forEach { ban ->
                                 tr {
                                     td { attributes["data-label"] = "Address"; +ban.key }
                                     td { attributes["data-label"] = "Reason"; +ban.reason }
-                                    td { attributes["data-label"] = "Site"; +ban.site }
+                                    td { attributes["data-label"] = "Domain"; +ban.domain }
                                     td("nowrap") { attributes["data-label"] = "Until"; +formatTimestamp(ban.expiresAt) }
                                     td("actions") { postButton("/security/lift", "Lift", "sm", confirm = "Lift the ban of ${ban.key}?", hidden = mapOf("key" to ban.key)) }
                                 }
@@ -57,14 +57,14 @@ fun Route.securityRoutes(kovexy: Kovexy) {
                 if (events.isEmpty()) p("muted gap-top") { +"No events." }
                 else div("table-wrap gap-top") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Time" }; th { +"Kind" }; th { +"Address" }; th { +"Site" }; th { +"Detail" } } }
+                        thead { tr { th { +"Time" }; th { +"Kind" }; th { +"Address" }; th { +"Domain" }; th { +"Detail" } } }
                         tbody {
                             events.forEach { e ->
                                 tr {
                                     td("nowrap") { attributes["data-label"] = "Time"; +formatTimestamp(e.time) }
                                     td { attributes["data-label"] = "Kind"; +e.type.label }
                                     td { attributes["data-label"] = "Address"; +e.ip }
-                                    td { attributes["data-label"] = "Site"; +e.site }
+                                    td { attributes["data-label"] = "Domain"; +e.domain }
                                     td { attributes["data-label"] = "Detail"; span("small break") { +e.detail } }
                                 }
                             }

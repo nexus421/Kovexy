@@ -127,7 +127,7 @@ private suspend fun ApplicationCall.accessPage(kovexy: Kovexy, problems: List<St
     val geo = kovexy.geo.status()
     val version = posted ?: kovexy.configStore.current.version
     page("Access", session, Nav.ACCESS, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
-        pageHeader("Access profiles", "IP and country rules, exploit filter, trap paths, rate limit, methods, captcha, OIDC login and Basic Auth. A site or location uses a profile by name.") {
+        pageHeader("Access profiles", "IP and country rules, exploit filter, trap paths, rate limit, methods, captcha, OIDC login and Basic Auth. A domain or route uses a profile by name.") {
             linkButton("/access/new", "Add profile", "primary")
         }
         if (problems.isNotEmpty()) problems("Not saved:", problems)
@@ -199,19 +199,19 @@ private fun profileSummary(p: AccessProfile): String = buildList {
     if (p.basicAuth != null) add("Basic Auth")
 }.ifEmpty { listOf("no rules") }.joinToString(", ")
 
-/** Sites and locations that use the profile [name]. */
-private fun usedBy(config: KovexyConfig, name: String): List<String> = config.sites.flatMap { site ->
-    val label = site.domains.firstOrNull().orEmpty()
-    listOfNotNull(label.takeIf { site.access == name }) + site.locations.filter { it.access == name }.map { "$label${it.path}" }
+/** Domains and routes that use the profile [name]. */
+private fun usedBy(config: KovexyConfig, name: String): List<String> = config.domains.flatMap { domain ->
+    val label = domain.names.firstOrNull().orEmpty()
+    listOfNotNull(label.takeIf { domain.access == name }) + domain.routes.filter { it.access == name }.map { "$label${it.path}" }
 }
 
-/** Points every site and location that uses [old] to [new], so renaming a profile keeps them protected. */
+/** Points every domain and route that uses [old] to [new], so renaming a profile keeps them protected. */
 private fun KovexyConfig.renameProfile(old: String, new: String): KovexyConfig {
     if (old == new) return this
-    return copy(sites = sites.map { site ->
-        site.copy(
-            access = if (site.access == old) new else site.access,
-            locations = site.locations.map { if (it.access == old) it.copy(access = new) else it },
+    return copy(domains = domains.map { domain ->
+        domain.copy(
+            access = if (domain.access == old) new else domain.access,
+            routes = domain.routes.map { if (it.access == old) it.copy(access = new) else it },
         )
     })
 }
@@ -329,7 +329,7 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
         card {
             form(action = action, method = FormMethod.post, classes = "form") {
                 versionField(version)
-                textField("Name", "name", profile.name, hint = "Sites and locations refer to the profile by this name. Renaming updates them.")
+                textField("Name", "name", profile.name, hint = "Domains and routes refer to the profile by this name. Renaming updates them.")
                 fieldSet {
                     legend { +"Block list" }
                     p("muted small") { +"Matching visitors get 403. Countries only count when the country of the IP is known." }
@@ -353,9 +353,9 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                 }
                 fieldSet {
                     legend { +"Trap paths" }
-                    checkField("Ban whoever calls a trap path", "trapsEnabled", profile.trapPaths.enabled, "the ban counts for all sites")
+                    checkField("Ban whoever calls a trap path", "trapsEnabled", profile.trapPaths.enabled, "the ban counts for all domains")
                     textAreaField("Paths", "trapPaths", profile.trapPaths.paths.joinToString("\n"), rows = 5,
-                        hint = "Path prefixes, one per line. A location with match exact for exactly that path still works. Default: ${DEFAULT_TRAP_PATHS.size} typical scanner targets.")
+                        hint = "Path prefixes, one per line. A route with match exact for exactly that path still works. Default: ${DEFAULT_TRAP_PATHS.size} typical scanner targets.")
                     textField("Ban duration", "banDuration", profile.trapPaths.banDuration.toString())
                 }
                 fieldSet {
@@ -412,11 +412,11 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                     legend { +"Captcha" }
                     val captcha = profile.captcha
                     checkField("Ask for a Google reCAPTCHA", "captchaEnabled", captcha != null,
-                        "visitors see a check page with 403 until they pass it, only on sites that are reachable over HTTPS alone. This sends visitor data to Google")
+                        "visitors see a check page with 403 until they pass it, only on domains that are reachable over HTTPS alone. This sends visitor data to Google")
                     textField("Valid for", "captchaDuration", (captcha?.sessionDuration ?: CaptchaConfig().sessionDuration).toString(), required = false,
                         hint = "Then the visitor is asked again. Solved captchas live in memory, a restart asks once more.")
                     textAreaField("Only these paths", "captchaPaths", captcha?.protectedPaths.orEmpty().joinToString("\n"), rows = 2,
-                        hint = "Path prefixes, one per line. Empty protects the whole site.")
+                        hint = "Path prefixes, one per line. Empty protects the whole domain.")
                     textAreaField("Exceptions", "captchaExceptions", exceptionsText(captcha?.exceptions.orEmpty()), rows = 2,
                         hint = "No captcha for: path /api or cidr 192.168.1.0/24, one per line.")
                     div("grid-2") {
@@ -436,7 +436,7 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
             }
         }
         if (name != null) card("Delete profile", "danger gap-top") {
-            p("muted") { +"Only possible while no site and no location use it." }
+            p("muted") { +"Only possible while no domain and no route use it." }
             postButton("$action/delete", "Delete profile", "danger", confirm = "Delete this access profile?", hidden = mapOf("version" to version))
         }
     }

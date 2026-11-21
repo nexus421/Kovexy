@@ -197,7 +197,7 @@ class CaptchaService(
 
 /**
  * Whether [path] is protected by the captcha: [CaptchaConfig.protectedPaths] (empty means all, prefixes at path
- * boundaries like locations) and not excepted.
+ * boundaries like routes) and not excepted.
  */
 fun captchaApplies(config: CaptchaConfig, path: String, excepted: Boolean): Boolean {
     if (excepted) return false

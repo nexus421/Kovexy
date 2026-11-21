@@ -7,11 +7,11 @@ import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
 import bayern.kickner.kovexy.config.IncusConfig
 import bayern.kickner.kovexy.config.KovexyConfig
-import bayern.kickner.kovexy.config.LocationConfig
-import bayern.kickner.kovexy.config.SiteConfig
+import bayern.kickner.kovexy.config.RouteConfig
+import bayern.kickner.kovexy.config.DomainConfig
 import bayern.kickner.kovexy.config.Target
-import bayern.kickner.kovexy.config.UpstreamConfig
-import bayern.kickner.kovexy.config.UpstreamServerConfig
+import bayern.kickner.kovexy.config.BackendConfig
+import bayern.kickner.kovexy.config.BackendServerConfig
 import bayern.kickner.kovexy.config.WebhookEvent
 import bayern.kickner.kovexy.config.isValidHostName
 import bayern.kickner.kovexy.notify.Event
@@ -58,8 +58,8 @@ private const val TAG = "Incus"
 /** Prefix of the keys Kovexy reads from an instance's own config. */
 const val INCUS_KEY_PREFIX = "user.kovexy."
 
-/** Prefix of the upstream groups Kovexy creates for approved instances, never valid in `kovexy.json`. */
-const val INCUS_UPSTREAM_PREFIX = "incus:"
+/** Prefix of the backends Kovexy creates for approved instances, never valid in `kovexy.json`. */
+const val INCUS_BACKEND_PREFIX = "incus:"
 
 /** Retry delay after the connection to Incus broke. */
 private val RECONNECT_DELAY = 10.seconds
@@ -134,8 +134,8 @@ data class IncusClaim(
     /** `project/name`. */
     val id: String get() = "${instance.project}/${instance.name}"
 
-    /** Name of the upstream group of this instance. */
-    val upstreamName: String get() = "$INCUS_UPSTREAM_PREFIX$id"
+    /** Name of the backend of this instance. */
+    val backendName: String get() = "$INCUS_BACKEND_PREFIX$id"
 
     /** What an approval is bound to besides the domains, see [incusTarget]. */
     val target: String get() = incusTarget(instance.address, port, tls, access)
@@ -163,11 +163,11 @@ internal var incusAddressAllowed: (String) -> Boolean = { text ->
 /**
  * Turns instances and decisions into claims. Rules: only instances of the configured projects, an approval only
  * for exactly the stored domains (new domains need a new click), a rejection counts for the instance whatever its
- * domains are, a manual site wins over a container, two approved running containers with the same domain both get no
+ * domains are, a manual domain wins over a container, two approved running containers with the same domain both get no
  * route for it. A container that is not approved only gets a warning, it never takes an approved route offline.
  */
 fun buildClaims(instances: List<IncusInstance>, decisions: List<IncusDecision>, config: KovexyConfig): List<IncusClaim> {
-    val manualDomains = config.sites.flatMap { it.domains }.toSet()
+    val manualDomains = config.domains.flatMap { it.names }.toSet()
     val profiles = config.accessProfiles.map { it.name }.toSet()
     val byKey = decisions.associateBy { it.project to it.instance }
     val relevant = instances.filter { it.project in config.incus.projects && it.keys.isNotEmpty() }
@@ -203,7 +203,7 @@ fun buildClaims(instances: List<IncusInstance>, decisions: List<IncusDecision>, 
             domains.filter { isValidHostName(it).not() }.forEach { add("\"$it\" is not a valid domain") }
             if (port == 0) add(if (portText.isEmpty()) "user.kovexy.port is missing" else "user.kovexy.port \"$portText\" is not a port")
             if (access != null && access !in profiles) add("access profile \"$access\" does not exist")
-            domains.filter { it in manualDomains }.forEach { add("$it belongs to a site set up by hand, that site wins") }
+            domains.filter { it in manualDomains }.forEach { add("$it belongs to a domain set up by hand, that domain wins") }
             // An approved route only yields to another approved one, an unapproved claim only gets the warning
             val counts = if (state == IncusState.APPROVED) approvedCount else runningCount
             domains.filter { (counts[it] ?: 0) > 1 }.forEach { add("$it is claimed by another container too") }
@@ -221,8 +221,8 @@ private fun domainsOf(instance: IncusInstance): List<String> =
     instance.keys["domains"].orEmpty().split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
 
 /**
- * The config the proxy works with: `kovexy.json` plus one site and one upstream group per live claim. The site
- * is served over HTTPS only (port 80 redirects), like a new site in the admin UI.
+ * The config the proxy works with: `kovexy.json` plus one domain and one backend per live claim. The domain
+ * is served over HTTPS only (port 80 redirects), like a new domain in the admin UI.
  *
  * A container that speaks HTTPS is reached by its IP address, which no public certificate names, so the certificate
  * is not checked. The traffic stays on the Incus bridge of the host.
@@ -231,12 +231,12 @@ fun withIncusRoutes(config: KovexyConfig, claims: List<IncusClaim>): KovexyConfi
     val live = claims.filter { it.live }
     if (live.isEmpty()) return config
     return config.copy(
-        sites = config.sites + live.map { claim ->
-            SiteConfig(domains = claim.domains, access = claim.access, locations = listOf(LocationConfig("/", target = Target.Upstream(claim.upstreamName))))
+        domains = config.domains + live.map { claim ->
+            DomainConfig(names = claim.domains, access = claim.access, routes = listOf(RouteConfig("/", target = Target.Backend(claim.backendName))))
         },
-        upstreams = config.upstreams + live.map { claim ->
+        backends = config.backends + live.map { claim ->
             val host = claim.instance.address.orEmpty()
-            UpstreamConfig(claim.upstreamName, listOf(UpstreamServerConfig("$host:${claim.port}", tls = claim.tls, skipCertVerify = claim.tls)))
+            BackendConfig(claim.backendName, listOf(BackendServerConfig("$host:${claim.port}", tls = claim.tls, skipCertVerify = claim.tls)))
         },
     )
 }

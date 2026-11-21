@@ -30,13 +30,13 @@ const val BASIC_AUTH_CACHE_MILLIS = 10L * 60 * 1000
  * What the access checks need from a request.
  *
  * @property address Visitor address (after trusted proxies).
- * @property site Site name, for events.
+ * @property domain Domain name, for events.
  * @property path Normalized request path.
  * @property rawQuery Query string as sent, without `?`.
  * @property method HTTP method.
  * @property userAgent The `User-Agent`.
  * @property authorization The `Authorization` header.
- * @property exactLocation Whether a location with `match: "exact"` serves exactly this path, then traps do not fire.
+ * @property exactRoute Whether a route with `match: "exact"` serves exactly this path, then traps do not fire.
  * @property domain Requested domain, a solved captcha counts for one domain.
  * @property captchaCookie Value of the captcha cookie.
  * @property isWebSocket Whether the request is a WebSocket upgrade, which cannot follow a redirect.
@@ -45,14 +45,14 @@ const val BASIC_AUTH_CACHE_MILLIS = 10L * 60 * 1000
  */
 data class AccessRequest(
     val address: InetAddress,
-    val site: String,
+    val domain: String,
     val path: String,
     val rawQuery: String,
     val method: String,
     val userAgent: String,
     val authorization: String?,
-    val exactLocation: Boolean,
-    val domain: String = "",
+    val exactRoute: Boolean,
+    val host: String = "",
     val captchaCookie: String? = null,
     val isWebSocket: Boolean = false,
     val foreignInitiated: Boolean = false,
@@ -84,7 +84,7 @@ sealed interface AccessResult {
      * The request may pass.
      *
      * @property basicAuthUser The Basic Auth user, if Basic Auth let it in. The proxy then removes the
-     *   `Authorization` header, so the password does not reach the upstream.
+     *   `Authorization` header, so the password does not reach the backend.
      */
     data class Allow(val basicAuthUser: String? = null) : AccessResult
 
@@ -116,7 +116,7 @@ sealed interface AccessResult {
 
 /**
  * Rate limit per profile and address in fixed one second windows, like Zoraxy. Counted per profile instead of
- * globally, so sites do not influence each other.
+ * globally, so domains do not influence each other.
  */
 class RateLimiter(private val clock: () -> Long = System::currentTimeMillis) {
     private class Window(@Volatile var second: Long, val count: AtomicInteger = AtomicInteger())
@@ -161,7 +161,7 @@ const val BASIC_AUTH_SLOT_WAIT_MILLIS = 2_000L
  * - A remembered login passes before anything else, wrong attempts of others from the same address cannot lock it out.
  *   Every use extends it, and parallel requests with the same login wait for one check.
  * - Five failures from one address lock it out of that profile for 15 minutes. Other profiles are not affected, a
- *   low-value site cannot lock its users out of another one.
+ *   low-value domain cannot lock its users out of another one.
  * - At most [BASIC_AUTH_CONCURRENT_CHECKS] hash checks run at once, for all profiles. A request that finds no free slot
  *   within [BASIC_AUTH_SLOT_WAIT_MILLIS] gets 503 and does not count as a failure.
  */
@@ -285,25 +285,25 @@ class AccessChecker(
         // 3. Exploit filter and trap paths
         val filter = profile.exploitFilter
         if (filter.commonExploits) matchCommonExploit(request.rawQuery, request.userAgent)?.let { group ->
-            security.record(SecurityEventType.EXPLOIT_BLOCKED, request.address.hostAddress, request.site, "exploit filter: $group: ${request.method} ${request.path}")
+            security.record(SecurityEventType.EXPLOIT_BLOCKED, request.address.hostAddress, request.domain, "exploit filter: $group: ${request.method} ${request.path}")
             return AccessResult.Deny(filter.response.status, "exploit filter: $group")
         }
         if (filter.aiBots) matchAiBot(request.userAgent, aiCrawlers())?.let { bot ->
-            security.record(SecurityEventType.AI_BOT_BLOCKED, request.address.hostAddress, request.site, "AI crawler: $bot: ${request.method} ${request.path}")
+            security.record(SecurityEventType.AI_BOT_BLOCKED, request.address.hostAddress, request.domain, "AI crawler: $bot: ${request.method} ${request.path}")
             return AccessResult.Deny(filter.response.status, "AI crawler: $bot")
         }
         val traps = profile.trapPaths
-        if (traps.enabled && request.exactLocation.not()) traps.paths.firstOrNull { request.path.startsWith(it) }?.let { trap ->
+        if (traps.enabled && request.exactRoute.not()) traps.paths.firstOrNull { request.path.startsWith(it) }?.let { trap ->
             // A foreign page could make every visitor's browser load a trap path, that only gets refused
             if (request.foreignInitiated) return deny(403, "trap path $trap, not banned (sent for another site)", SecurityEventType.ACCESS_DENIED, request)
             // An address on the allow list of the profile is never banned (decided on 20.11.2026), the request is still refused
             if (profile.allowsIp(request.address)) return deny(403, "trap path $trap, not banned (on the allow list)", SecurityEventType.ACCESS_DENIED, request)
-            bans.ban(request.address, traps.banDuration, "trap path $trap", request.site)
+            bans.ban(request.address, traps.banDuration, "trap path $trap", request.domain)
             return AccessResult.Deny(403, "trap path $trap")
         }
 
         // 4. Rate limit
-        if (rateLimitExceeded(profile, request.address, request.site, "${request.method} ${request.path}")) return AccessResult.Deny(429, "rate limit")
+        if (rateLimitExceeded(profile, request.address, request.domain, "${request.method} ${request.path}")) return AccessResult.Deny(429, "rate limit")
 
         // 5. Allowed methods
         if (profile.allowedMethods.isNotEmpty() && request.method !in profile.allowedMethods) {
@@ -311,7 +311,7 @@ class AccessChecker(
         }
 
         // 6. Captcha
-        val solved = profile.captcha != null && captcha.sessions.isValid(request.captchaCookie, captcha.scope(profile.name, request.domain))
+        val solved = profile.captcha != null && captcha.sessions.isValid(request.captchaCookie, captcha.scope(profile.name, request.host))
         profile.captcha?.let { config ->
             val excepted = config.exceptions.any { e ->
                 e.pathPrefix?.let { p -> p == "/" || request.path == p.trimEnd('/') || request.path.startsWith(p.trimEnd('/') + "/") } == true ||
@@ -333,7 +333,7 @@ class AccessChecker(
             BasicResult.Locked -> deny(429, "basic auth locked out", SecurityEventType.BASIC_AUTH_FAILED, request)
             BasicResult.Busy -> AccessResult.Deny(503, "basic auth busy")
             BasicResult.Wrong -> {
-                security.record(SecurityEventType.BASIC_AUTH_FAILED, ip, request.site, request.path)
+                security.record(SecurityEventType.BASIC_AUTH_FAILED, ip, request.domain, request.path)
                 AccessResult.Challenge(auth.realm, "basic auth failed")
             }
         }
@@ -345,15 +345,15 @@ class AccessChecker(
      *
      * @param what Method and path for the security event.
      */
-    fun rateLimitExceeded(profile: AccessProfile, address: InetAddress, site: String, what: String): Boolean {
+    fun rateLimitExceeded(profile: AccessProfile, address: InetAddress, domain: String, what: String): Boolean {
         val limit = profile.rateLimit ?: return false
         if (rateLimiter.exceeded(profile.name, addressKey(address, limit.ipv6Prefix), limit.requestsPerSecond).not()) return false
-        security.record(SecurityEventType.RATE_LIMITED, address.hostAddress, site, "rate limit: $what")
+        security.record(SecurityEventType.RATE_LIMITED, address.hostAddress, domain, "rate limit: $what")
         return true
     }
 
     private fun deny(status: Int, reason: String, type: SecurityEventType, request: AccessRequest, allow: String? = null): AccessResult.Deny {
-        security.record(type, request.address.hostAddress, request.site, "$reason: ${request.method} ${request.path}")
+        security.record(type, request.address.hostAddress, request.domain, "$reason: ${request.method} ${request.path}")
         return AccessResult.Deny(status, reason, allow)
     }
 }

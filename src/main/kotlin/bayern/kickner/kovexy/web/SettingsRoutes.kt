@@ -72,8 +72,8 @@ fun Route.settingsRoutes(kovexy: Kovexy) {
         val accessLog = parseDuration("Access log retention", params["retentionAccessLog"], problems)
         val hourly = parseDuration("Hourly statistics retention", params["retentionHourly"], problems)
         val wsDelay = parseDuration("WebSocket close delay", params["webSocketCloseDelay"], problems)
-        val connect = parseDuration("Upstream connect timeout", params["upstreamConnectTimeout"], problems)
-        val keepAlive = parseDuration("Upstream keep-alive", params["upstreamKeepAlive"], problems)
+        val connect = parseDuration("Backend connect timeout", params["backendConnectTimeout"], problems)
+        val keepAlive = parseDuration("Backend keep-alive", params["backendKeepAlive"], problems)
         val clientIdle = parseDuration("Client idle timeout", params["clientIdleTimeout"], problems)
         val headerBytes = params["maxRequestHeaderBytes"]?.trim()?.toIntOrNull() ?: run { problems += "Request header size must be a number"; 0 }
         val maxConnections = params["maxConnections"]?.trim()?.toIntOrNull() ?: run { problems += "Maximum connections must be a number"; 0 }
@@ -288,7 +288,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                         textField("Port", "adminPort", v("adminPort", config.admin.port.toString()), type = InputType.number)
                     }
                     textField("Public URL", "publicUrl", v("publicUrl", config.admin.publicUrl), required = false, placeholder = "https://proxy.example.com",
-                        hint = "When the UI is reached through a site whose target is 127.0.0.1:${config.admin.port}. Empty for local use only.")
+                        hint = "When the UI is reached through a domain whose target is 127.0.0.1:${config.admin.port}. Empty for local use only.")
                     div("grid-2") {
                         textField("Session idle timeout", "idleTimeout", v("idleTimeout", config.admin.session.idleTimeout.toString()))
                         textField("Session maximum age", "maxAge", v("maxAge", config.admin.session.maxAge.toString()))
@@ -299,8 +299,8 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                     textAreaField("Trusted proxies", "trustedProxies", v("trustedProxies", config.trustedProxies.joinToString("\n")), rows = 2,
                         hint = "IPs or ranges like 192.168.1.0/24 whose X-Forwarded-For is believed. Usually empty.")
                     div("grid-2") {
-                        textField("Upstream connect timeout", "upstreamConnectTimeout", v("upstreamConnectTimeout", config.limits.upstreamConnectTimeout.toString()))
-                        textField("Upstream keep-alive", "upstreamKeepAlive", v("upstreamKeepAlive", config.limits.upstreamKeepAlive.toString()))
+                        textField("Backend connect timeout", "backendConnectTimeout", v("backendConnectTimeout", config.limits.backendConnectTimeout.toString()))
+                        textField("Backend keep-alive", "backendKeepAlive", v("backendKeepAlive", config.limits.backendKeepAlive.toString()))
                         textField("Client idle timeout", "clientIdleTimeout", v("clientIdleTimeout", config.limits.clientIdleTimeout.toString()))
                         textField("Request header size (bytes)", "maxRequestHeaderBytes", v("maxRequestHeaderBytes", config.limits.maxRequestHeaderBytes.toString()), type = InputType.number)
                         textField("Maximum connections", "maxConnections", v("maxConnections", config.limits.maxConnections.toString()), type = InputType.number,

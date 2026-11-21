@@ -19,7 +19,7 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 import kotlin.time.Duration.Companion.hours
 
-/** Accepts every server certificate, only for upstream servers with `skipCertVerify`. */
+/** Accepts every server certificate, only for backend servers with `skipCertVerify`. */
 private object TrustAll : X509TrustManager {
     override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
     override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
@@ -34,7 +34,7 @@ private val systemTrust: X509TrustManager by lazy {
 
 /**
  * Checks the chain against the system CAs and the server certificate against [host], the configured address of the
- * upstream. Ktor's CIO client checks the name only loosely: a certificate without names of the matching kind passes,
+ * backend. Ktor's CIO client checks the name only loosely: a certificate without names of the matching kind passes,
  * and for an IP address it compares a reverse DNS name (audit run-2). Here an IP address needs the same IP in the
  * certificate's subject alternative names, a name needs a matching DNS name. The common name is not used, like in
  * browsers.
@@ -68,16 +68,16 @@ private fun dnsNameMatches(pattern: String, name: String): Boolean {
 }
 
 /**
- * HTTP clients for upstream servers, Ktor client with the CIO engine. Servers with `skipCertVerify` share one client
+ * HTTP clients for backend servers, Ktor client with the CIO engine. Servers with `skipCertVerify` share one client
  * that accepts any certificate. Every other HTTPS server host gets its own client whose trust manager also checks
  * the certificate against that host ([HostCheckingTrustManager]). Plain HTTP servers use the client of their host
- * too, it simply never does TLS. No client follows redirects, retries, decodes or adds content: what the upstream
+ * too, it simply never does TLS. No client follows redirects, retries, decodes or adds content: what the backend
  * sends goes to the visitor as it is.
  *
  * @property insecure Accepts any certificate.
  * @property limits The limits the clients were built for.
  */
-class UpstreamClients private constructor(val insecure: HttpClient, val limits: LimitsConfig) {
+class BackendClients private constructor(val insecure: HttpClient, val limits: LimitsConfig) {
     private val strict = ConcurrentHashMap<String, HttpClient>()
 
     @Volatile
@@ -105,11 +105,11 @@ class UpstreamClients private constructor(val insecure: HttpClient, val limits: 
 
     companion object {
         /** The clients for [limits], the per host ones are created on first use. */
-        fun create(limits: LimitsConfig): UpstreamClients = UpstreamClients(build(limits, null), limits)
+        fun create(limits: LimitsConfig): BackendClients = BackendClients(build(limits, null), limits)
 
         /**
          * Connections a client may open, in total and per server address. Ktor's defaults (1000 and 100) let one
-         * visitor with 100 slow requests make other sites wait for the pool, and a wait for the pool ended as connect
+         * visitor with 100 slow requests make other domains wait for the pool, and a wait for the pool ended as connect
          * timeout and marked the server down (audit run-2). The proxy ports already limit connections
          * (`limits.maxConnections`), a server's own `maxConnections` limits per server.
          */
@@ -142,8 +142,8 @@ class UpstreamClients private constructor(val insecure: HttpClient, val limits: 
                 maxConnectionsCount = POOL_CONNECTIONS
                 endpoint.apply {
                     maxConnectionsPerRoute = POOL_CONNECTIONS
-                    connectTimeout = limits.upstreamConnectTimeout.inWholeMilliseconds
-                    keepAliveTime = limits.upstreamKeepAlive.inWholeMilliseconds
+                    connectTimeout = limits.backendConnectTimeout.inWholeMilliseconds
+                    keepAliveTime = limits.backendKeepAlive.inWholeMilliseconds
                     connectAttempts = 1
                 }
                 https {
@@ -162,19 +162,19 @@ class UpstreamClients private constructor(val insecure: HttpClient, val limits: 
 }
 
 /**
- * Holds the current [UpstreamClients] and replaces them when the limits change. Replaced clients are closed after an
+ * Holds the current [BackendClients] and replaces them when the limits change. Replaced clients are closed after an
  * hour, so running transfers can finish.
  */
-class UpstreamClientHolder(limits: LimitsConfig, private val scope: CoroutineScope) {
+class BackendClientHolder(limits: LimitsConfig, private val scope: CoroutineScope) {
     @Volatile
-    var current: UpstreamClients = UpstreamClients.create(limits)
+    var current: BackendClients = BackendClients.create(limits)
         private set
 
     /** Rebuilds the clients if [limits] changed. */
     fun update(limits: LimitsConfig) {
         val old = current
-        if (old.limits.upstreamConnectTimeout == limits.upstreamConnectTimeout && old.limits.upstreamKeepAlive == limits.upstreamKeepAlive) return
-        current = UpstreamClients.create(limits)
+        if (old.limits.backendConnectTimeout == limits.backendConnectTimeout && old.limits.backendKeepAlive == limits.backendKeepAlive) return
+        current = BackendClients.create(limits)
         scope.launch {
             delay(1.hours)
             old.close()

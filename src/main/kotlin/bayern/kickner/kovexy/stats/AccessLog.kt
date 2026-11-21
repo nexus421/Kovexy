@@ -43,8 +43,8 @@ private const val BATCH_SIZE = 1000
 /** Longest wait before a partial batch is written. */
 private const val FLUSH_MILLIS = 1000L
 
-/** Site name in log and statistics for requests no site served. */
-const val DEFAULT_SITE_KEY = ""
+/** Domain name in log and statistics for requests no domain served. */
+const val FALLBACK_KEY = ""
 
 /**
  * One handled request.
@@ -58,12 +58,12 @@ const val DEFAULT_SITE_KEY = ""
  * @property bytesIn Bytes of the request body.
  * @property bytesOut Bytes of the response body.
  * @property durationMs Time until the response was complete.
- * @property site First domain of the site, [DEFAULT_SITE_KEY] for the default site.
- * @property location Path of the location, empty if none.
- * @property upstream Address of the upstream server, empty if none.
+ * @property domain First domain of the domain, [FALLBACK_KEY] for the fallback.
+ * @property route Path of the route, empty if none.
+ * @property backend Address of the backend server, empty if none.
  * @property userAgent The visitor's `User-Agent`.
  * @property reason Why the request was refused or failed, empty otherwise.
- * @property logged Whether the site writes an access log. Statistics count every request.
+ * @property logged Whether the domain writes an access log. Statistics count every request.
  * @property referer The `Referer` without query, empty if none.
  * @property country ISO code of the visitor's country, empty if unknown.
  */
@@ -71,15 +71,15 @@ data class AccessRecord(
     val time: Long,
     val clientIp: String,
     val method: String,
-    val domain: String,
+    val host: String,
     val path: String,
     val status: Int,
     val bytesIn: Long,
     val bytesOut: Long,
     val durationMs: Long,
-    val site: String,
-    val location: String,
-    val upstream: String,
+    val domain: String,
+    val route: String,
+    val backend: String,
     val userAgent: String,
     val reason: String,
     val logged: Boolean = true,
@@ -90,10 +90,10 @@ data class AccessRecord(
 /** Kinds of the daily top lists. */
 enum class TopKind(val label: String) {
     IP("IPs"), COUNTRY("Countries"), PATH("Paths"), USER_AGENT("User agents"), REFERER("Referers"), METHOD("Methods"),
-    UPSTREAM("Upstream servers"), BLOCK_REASON("Refusals by reason"),
+    BACKEND("Backend servers"), BLOCK_REASON("Refusals by reason"),
 }
 
-/** Entries kept per top list, site and day (Zoraxy limits its lists too). */
+/** Entries kept per top list, domain and day (Zoraxy limits its lists too). */
 const val TOP_LIST_SIZE = 100
 
 /** Upper bounds of the response time buckets in milliseconds, the last bucket takes everything above. */
@@ -137,7 +137,7 @@ private fun topKeys(r: AccessRecord): List<Pair<TopKind, String>> = listOfNotNul
     TopKind.USER_AGENT to r.userAgent.ifEmpty { "none" },
     r.referer.takeIf { it.isNotEmpty() }?.let { TopKind.REFERER to it },
     TopKind.METHOD to r.method,
-    r.upstream.takeIf { it.isNotEmpty() }?.let { TopKind.UPSTREAM to it },
+    r.backend.takeIf { it.isNotEmpty() }?.let { TopKind.BACKEND to it },
     r.reason.takeIf { it.isNotEmpty() && r.status >= 400 }?.let { TopKind.BLOCK_REASON to it },
 ).map { it.first to it.second.take(512) }
 
@@ -206,26 +206,26 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
         val tops = HashMap<Triple<String, Long, TopKind>, HashMap<String, Long>>()
         val latency = HashMap<Pair<String, Long>, LongArray>()
         batch.forEach { record ->
-            hourly.getOrPut(record.site to hourStart(record.time)) { Counter() }.add(record)
+            hourly.getOrPut(record.domain to hourStart(record.time)) { Counter() }.add(record)
             val day = dayStart(record.time)
-            daily.getOrPut(record.site to day) { Counter() }.add(record)
-            topKeys(record).forEach { (kind, key) -> tops.getOrPut(Triple(record.site, day, kind)) { HashMap() }.merge(key, 1L, Long::plus) }
-            latency.getOrPut(record.site to hourStart(record.time)) { LongArray(LATENCY_BOUNDS.size + 1) }[latencyBucket(record.durationMs)]++
+            daily.getOrPut(record.domain to day) { Counter() }.add(record)
+            topKeys(record).forEach { (kind, key) -> tops.getOrPut(Triple(record.domain, day, kind)) { HashMap() }.merge(key, 1L, Long::plus) }
+            latency.getOrPut(record.domain to hourStart(record.time)) { LongArray(LATENCY_BOUNDS.size + 1) }[latencyBucket(record.durationMs)]++
         }
         storage.tx {
             AccessLogTable.batchInsert(batch.filter { it.logged }, shouldReturnGeneratedValues = false) { r ->
                 this[AccessLogTable.time] = r.time
                 this[AccessLogTable.clientIp] = r.clientIp.take(64)
                 this[AccessLogTable.method] = r.method.take(16)
-                this[AccessLogTable.domain] = r.domain.take(253)
+                this[AccessLogTable.host] = r.host.take(253)
                 this[AccessLogTable.path] = r.path.take(2048)
                 this[AccessLogTable.status] = r.status
                 this[AccessLogTable.bytesIn] = r.bytesIn
                 this[AccessLogTable.bytesOut] = r.bytesOut
                 this[AccessLogTable.durationMs] = r.durationMs
-                this[AccessLogTable.site] = r.site.take(253)
-                this[AccessLogTable.location] = r.location.take(512)
-                this[AccessLogTable.upstream] = r.upstream.take(300)
+                this[AccessLogTable.domain] = r.domain.take(253)
+                this[AccessLogTable.route] = r.route.take(512)
+                this[AccessLogTable.backend] = r.backend.take(300)
                 this[AccessLogTable.userAgent] = r.userAgent.take(512)
                 this[AccessLogTable.reason] = r.reason.take(200)
             }
@@ -243,9 +243,9 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
      */
     private fun mergeTops(tops: Map<Triple<String, Long, TopKind>, Map<String, Long>>) {
         tops.forEach { (group, counts) ->
-            val (site, day, kind) = group
+            val (domain, day, kind) = group
             val stored = StatsTopTable.selectAll()
-                .where { (StatsTopTable.site eq site) and (StatsTopTable.day eq day) and (StatsTopTable.kind eq kind.name) }
+                .where { (StatsTopTable.domain eq domain) and (StatsTopTable.day eq day) and (StatsTopTable.kind eq kind.name) }
                 .associate { it[StatsTopTable.key] to it[StatsTopTable.count] }.toMutableMap()
             val changed = HashSet<String>()
             counts.entries.sortedByDescending { it.value }.forEach { (key, count) ->
@@ -258,7 +258,7 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
                         stored.remove(smallest.key)
                         changed -= smallest.key
                         StatsTopTable.deleteWhere {
-                            (StatsTopTable.site eq site) and (StatsTopTable.day eq day) and (StatsTopTable.kind eq kind.name) and (StatsTopTable.key eq smallest.key)
+                            (StatsTopTable.domain eq domain) and (StatsTopTable.day eq day) and (StatsTopTable.kind eq kind.name) and (StatsTopTable.key eq smallest.key)
                         }
                         stored[key] = smallest.value + count
                     }
@@ -266,7 +266,7 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
             }
             // Only the keys of this batch, the list holds up to 100 rows and most of them did not change
             StatsTopTable.batchUpsert(stored.entries.filter { it.key in changed }, shouldReturnGeneratedValues = false) { (key, count) ->
-                this[StatsTopTable.site] = site
+                this[StatsTopTable.domain] = domain
                 this[StatsTopTable.day] = day
                 this[StatsTopTable.kind] = kind.name
                 this[StatsTopTable.key] = key
@@ -277,10 +277,10 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
 
     private fun mergeLatency(latency: Map<Pair<String, Long>, LongArray>) {
         latency.forEach { (key, counts) ->
-            LatencyTable.selectAll().where { (LatencyTable.site eq key.first) and (LatencyTable.bucket eq key.second) }.firstOrNull()
+            LatencyTable.selectAll().where { (LatencyTable.domain eq key.first) and (LatencyTable.bucket eq key.second) }.firstOrNull()
                 ?.let { row -> parseHistogram(row[LatencyTable.histogram]).forEachIndexed { i, c -> if (i < counts.size) counts[i] += c } }
             LatencyTable.upsert {
-                it[site] = key.first
+                it[domain] = key.first
                 it[bucket] = key.second
                 it[histogram] = counts.joinToString(",")
             }
@@ -290,7 +290,7 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
     /** Adds [counters] to the stored rows. Only this writer changes statistics, so read, add, write is safe. */
     private fun merge(table: StatsTable, counters: Map<Pair<String, Long>, Counter>) {
         counters.forEach { (key, counter) ->
-            table.selectAll().where { (table.site eq key.first) and (table.bucket eq key.second) }.firstOrNull()?.let { row ->
+            table.selectAll().where { (table.domain eq key.first) and (table.bucket eq key.second) }.firstOrNull()?.let { row ->
                 counter.requests += row[table.requests]
                 counter.s2 += row[table.status2xx]
                 counter.s3 += row[table.status3xx]
@@ -303,7 +303,7 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
             }
         }
         table.batchUpsert(counters.entries, shouldReturnGeneratedValues = false) { (key, c) ->
-            this[table.site] = key.first
+            this[table.domain] = key.first
             this[table.bucket] = key.second
             this[table.requests] = c.requests
             this[table.status2xx] = c.s2
@@ -327,28 +327,28 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
     /**
      * The newest access log entries, newest first.
      *
-     * @param site Only this site, `null` for all.
+     * @param domain Only this domain, `null` for all.
      * @param status Only this status class (`2` for 2xx), `null` for all.
      * @param search Only entries whose path, IP or domain contain this text.
      * @param limit Most entries returned.
      */
-    fun latest(site: String? = null, status: Int? = null, search: String? = null, limit: Int = 200): List<AccessRecord> = storage.tx {
+    fun latest(domain: String? = null, status: Int? = null, search: String? = null, limit: Int = 200): List<AccessRecord> = storage.tx {
         val query = AccessLogTable.selectAll()
-        site?.let { s -> query.andWhere { AccessLogTable.site eq s } }
+        domain?.let { s -> query.andWhere { AccessLogTable.domain eq s } }
         status?.let { s -> query.andWhere { AccessLogTable.status.between(s * 100, s * 100 + 99) } }
         search?.takeIf { it.isNotBlank() }?.let { text ->
             // SQLite has no default escape character, so the pattern names its own
             val pattern = LikePattern("%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%", '\\')
             query.andWhere {
-                (AccessLogTable.path like pattern) or (AccessLogTable.clientIp like pattern) or (AccessLogTable.domain like pattern)
+                (AccessLogTable.path like pattern) or (AccessLogTable.clientIp like pattern) or (AccessLogTable.host like pattern)
             }
         }
         query.orderBy(AccessLogTable.id, SortOrder.DESC).limit(limit).map { row ->
             AccessRecord(
                 time = row[AccessLogTable.time], clientIp = row[AccessLogTable.clientIp], method = row[AccessLogTable.method],
-                domain = row[AccessLogTable.domain], path = row[AccessLogTable.path], status = row[AccessLogTable.status],
+                host = row[AccessLogTable.host], path = row[AccessLogTable.path], status = row[AccessLogTable.status],
                 bytesIn = row[AccessLogTable.bytesIn], bytesOut = row[AccessLogTable.bytesOut], durationMs = row[AccessLogTable.durationMs],
-                site = row[AccessLogTable.site], location = row[AccessLogTable.location], upstream = row[AccessLogTable.upstream],
+                domain = row[AccessLogTable.domain], route = row[AccessLogTable.route], backend = row[AccessLogTable.backend],
                 userAgent = row[AccessLogTable.userAgent], reason = row[AccessLogTable.reason],
             )
         }
@@ -375,7 +375,7 @@ class AccessLog(private val storage: Storage, private val zone: ZoneId = ZoneId.
  * @property bucket Start of the hour or day, Unix milliseconds.
  */
 data class StatsRow(
-    val site: String,
+    val domain: String,
     val bucket: Long,
     val requests: Long,
     val status2xx: Long,
@@ -396,15 +396,15 @@ data class StatsRow(
  *
  * @param hourly `true` for hourly, `false` for daily rows.
  * @param from First bucket, inclusive.
- * @param sites Only these sites, `null` for all.
+ * @param domains Only these domains, `null` for all.
  */
-fun Storage.statistics(hourly: Boolean, from: Long, sites: List<String>? = null): List<StatsRow> = tx {
+fun Storage.statistics(hourly: Boolean, from: Long, domains: List<String>? = null): List<StatsRow> = tx {
     val table: StatsTable = if (hourly) StatsHourlyTable else StatsDailyTable
     val query = table.selectAll().where { table.bucket greaterEq from }
-    sites?.let { list -> query.andWhere { table.site inList list } }
+    domains?.let { list -> query.andWhere { table.domain inList list } }
     query.orderBy(table.bucket).map { row ->
         StatsRow(
-            row[table.site], row[table.bucket], row[table.requests], row[table.status2xx], row[table.status3xx],
+            row[table.domain], row[table.bucket], row[table.requests], row[table.status2xx], row[table.status3xx],
             row[table.status4xx], row[table.status5xx], row[table.bytesIn], row[table.bytesOut], row[table.durationSum],
             row[table.durationMax],
         )
@@ -425,12 +425,12 @@ fun sumHistograms(histograms: Collection<LongArray>): LongArray {
  * The top lists of a time range, summed over its days.
  *
  * @param from First day, inclusive.
- * @param site Only this site, `null` for all.
+ * @param domain Only this domain, `null` for all.
  * @param limit Entries per kind.
  */
-fun Storage.topLists(from: Long, site: String?, limit: Int = 10): Map<TopKind, List<Pair<String, Long>>> = tx {
+fun Storage.topLists(from: Long, domain: String?, limit: Int = 10): Map<TopKind, List<Pair<String, Long>>> = tx {
     val query = StatsTopTable.selectAll().where { StatsTopTable.day greaterEq from }
-    site?.let { s -> query.andWhere { StatsTopTable.site eq s } }
+    domain?.let { s -> query.andWhere { StatsTopTable.domain eq s } }
     query.groupBy({ TopKind.entries.firstOrNull { k -> k.name == it[StatsTopTable.kind] } }, { it[StatsTopTable.key] to it[StatsTopTable.count] })
         .filterKeys { it != null }
         .mapKeys { it.key!! }
@@ -438,13 +438,13 @@ fun Storage.topLists(from: Long, site: String?, limit: Int = 10): Map<TopKind, L
 }
 
 /**
- * Response time histograms per hour from [from] on, summed over the sites (or only [site]).
+ * Response time histograms per hour from [from] on, summed over the domains (or only [domain]).
  *
  * @return start of the hour to the histogram.
  */
-fun Storage.latencyHistograms(from: Long, site: String?): Map<Long, LongArray> = tx {
+fun Storage.latencyHistograms(from: Long, domain: String?): Map<Long, LongArray> = tx {
     val query = LatencyTable.selectAll().where { LatencyTable.bucket greaterEq from }
-    site?.let { s -> query.andWhere { LatencyTable.site eq s } }
+    domain?.let { s -> query.andWhere { LatencyTable.domain eq s } }
     val result = HashMap<Long, LongArray>()
     query.forEach { row ->
         val counts = parseHistogram(row[LatencyTable.histogram])

@@ -46,17 +46,17 @@ class GoogleCaptchaTest {
     private fun config(backend: Int) = """
         { "admin": { "port": ADMIN_PORT },
           "accessProfiles": [
-            { "name": "v2", "captcha": { "siteKey": "site-v2", "secretKey": "the secret", "exceptions": [ { "pathPrefix": "/public" } ] } },
-            { "name": "v3", "captcha": { "siteKey": "site-v3", "secretKey": "the secret", "recaptchaVersion": "v3" } },
-            { "name": "ai", "exploitFilter": { "aiBots": true }, "captcha": { "siteKey": "site-v2", "secretKey": "the secret" } },
-            { "name": "limited", "rateLimit": { "requestsPerSecond": 2 }, "captcha": { "siteKey": "site-v2", "secretKey": "the secret" } }
+            { "name": "v2", "captcha": { "siteKey": "domain-v2", "secretKey": "the secret", "exceptions": [ { "pathPrefix": "/public" } ] } },
+            { "name": "v3", "captcha": { "siteKey": "domain-v3", "secretKey": "the secret", "recaptchaVersion": "v3" } },
+            { "name": "ai", "exploitFilter": { "aiBots": true }, "captcha": { "siteKey": "domain-v2", "secretKey": "the secret" } },
+            { "name": "limited", "rateLimit": { "requestsPerSecond": 2 }, "captcha": { "siteKey": "domain-v2", "secretKey": "the secret" } }
           ],
-          "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$backend" } ] } ],
-          "sites": [
-            { "domains": ["a.test"], "access": "v2", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
-            { "domains": ["b.test"], "access": "ai", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
-            { "domains": ["c.test"], "access": "limited", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] },
-            { "domains": ["d.test"], "access": "v3", "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] }
+          "backends": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$backend" } ] } ],
+          "domains": [
+            { "names": ["a.test"], "access": "v2", "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] },
+            { "names": ["b.test"], "access": "ai", "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] },
+            { "names": ["c.test"], "access": "limited", "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] },
+            { "names": ["d.test"], "access": "v3", "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] }
           ] }
     """.trimIndent()
 
@@ -77,7 +77,7 @@ class GoogleCaptchaTest {
                 Harness(config(backend.port), googleSiteverify = google.url).use { h ->
                     val first = tlsRequest(h, "a.test", "/page?x=1")
                     assertEquals(403, first.status)
-                    assertTrue(first.text.contains("/.kovexy/captcha.js") && first.text.contains("g-recaptcha") && first.text.contains("data-sitekey=\"site-v2\""), first.text)
+                    assertTrue(first.text.contains("/.kovexy/captcha.js") && first.text.contains("g-recaptcha") && first.text.contains("data-sitekey=\"domain-v2\""), first.text)
                     val csp = first.header("Content-Security-Policy").orEmpty()
                     assertTrue(csp.contains("script-src 'self' https://www.google.com/recaptcha/"), csp)
                     assertEquals(200, tlsRequest(h, "a.test", "/public/file").status, "Exceptions need no captcha")
@@ -101,13 +101,13 @@ class GoogleCaptchaTest {
                     val pass = tlsRequest(h, "a.test", "/page?x=1", headers = listOf("Cookie" to cookie.substringBefore(';')))
                     assertEquals(200, pass.status)
                     assertTrue(pass.text.contains("uri=/page?x=1"))
-                    assertFalse(pass.text.contains("kovexy-captcha="), "The captcha cookie does not reach the upstream")
+                    assertFalse(pass.text.contains("kovexy-captcha="), "The captcha cookie does not reach the backend")
                     assertEquals(403, tlsRequest(h, "b.test", "/", headers = listOf("Cookie" to cookie.substringBefore(';'), "User-Agent" to "GPTBot/1.1")).status,
                         "A session counts for its profile and domain only")
                     val huge = tlsRequest(h, "a.test", "/.kovexy/captcha/verify", method = "POST", headers = listOf(formHeader),
                         body = form("token" to token, "g-recaptcha-response" to "good", "pad" to "x".repeat(40_000)))
                     assertEquals(400, huge.status, "A form above the limit is not read into memory and counts as empty")
-                    assertEquals(404, tlsRequest(h, "a.test", "/.kovexy/anything").status, "Reserved paths never reach the upstream")
+                    assertEquals(404, tlsRequest(h, "a.test", "/.kovexy/anything").status, "Reserved paths never reach the backend")
                     assertEquals(404, tlsRequest(h, "a.test", "/%2Ekovexy/anything", headers = listOf("Cookie" to cookie.substringBefore(';'))).status, "Also not with an encoded dot")
                 }
             }
@@ -115,13 +115,13 @@ class GoogleCaptchaTest {
     }
 
     @Test
-    fun theInvisibleCaptchaPageCarriesTheSiteKeyForTheScript(): Unit = runBlocking {
+    fun theInvisibleCaptchaPageCarriesTheDomainKeyForTheScript(): Unit = runBlocking {
         FakeGoogle().use { google ->
             TestBackend().use { backend ->
                 Harness(config(backend.port), googleSiteverify = google.url).use { h ->
                     val page = tlsRequest(h, "d.test", "/")
                     assertEquals(403, page.status)
-                    assertTrue(page.text.contains("data-provider=\"recaptcha3\"") && page.text.contains("data-sitekey=\"site-v3\""), page.text)
+                    assertTrue(page.text.contains("data-provider=\"recaptcha3\"") && page.text.contains("data-sitekey=\"domain-v3\""), page.text)
                     assertTrue(page.text.contains("name=\"g-recaptcha-response\""), "The script fills the answer in")
                     assertEquals(302, verify(h, "d.test", hidden(page.text, "token")!!, "good").status)
                 }
@@ -163,8 +163,8 @@ class GoogleCaptchaTest {
 class NoAppLoginTest {
     private val config = """
         { "admin": { "port": ADMIN_PORT },
-          "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:BACKEND" } ] } ],
-          "sites": [ { "domains": ["app.test"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ] }
+          "backends": [ { "name": "app", "servers": [ { "address": "127.0.0.1:BACKEND" } ] } ],
+          "domains": [ { "names": ["app.test"], "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] } ] }
     """.trimIndent()
 
     @Test
@@ -179,7 +179,7 @@ class NoAppLoginTest {
     }
 
     @Test
-    fun identityHeadersOfVisitorsNeverReachTheUpstream(): Unit = runBlocking {
+    fun identityHeadersOfVisitorsNeverReachTheBackend(): Unit = runBlocking {
         TestBackend().use { backend ->
             Harness(config.replace("BACKEND", backend.port.toString())).use { h ->
                 val forged = listOf("X-Forwarded-User" to "mallory", "X-Forwarded-Email" to "m@evil.test", "X.Forwarded.Preferred.Username" to "mallory")

@@ -9,11 +9,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/** Load balancing, health checks, static files and the default site. */
+/** Load balancing, health checks, static files and the fallback. */
 class TargetsTest {
 
-    private fun site(target: String, domain: String = "a.test") =
-        """{ "domains": ["$domain"], "locations": [ { "path": "/", "target": $target } ] }"""
+    private fun domain(target: String, domain: String = "a.test") =
+        """{ "names": ["$domain"], "routes": [ { "path": "/", "target": $target } ] }"""
 
     @Test
     fun weightedBackupAndPassiveHealth(): Unit = runBlocking {
@@ -23,11 +23,11 @@ class TargetsTest {
         val backup = TestBackend(backupPort, name = "backup")
         val config = """
             { "admin": { "port": ADMIN_PORT },
-              "upstreams": [ { "name": "app", "servers": [
+              "backends": [ { "name": "app", "servers": [
                 { "address": "127.0.0.1:${one.port}", "weight": 3 },
                 { "address": "127.0.0.1:${two.port}", "weight": 1 },
                 { "address": "127.0.0.1:$backupPort", "weight": 0 } ] } ],
-              "sites": [ ${site("""{ "type": "upstream", "upstream": "app" }""")} ] }
+              "domains": [ ${domain("""{ "type": "backend", "backend": "app" }""")} ] }
         """.trimIndent()
         Harness(config).use { h ->
             val counts = (1..200).map { h.https("a.test", "/x").header("X-Backend") }.groupingBy { it }.eachCount()
@@ -39,7 +39,7 @@ class TargetsTest {
             two.close()
             repeat(6) { runCatching { h.https("a.test", "/x") } }
             assertEquals("backup", h.https("a.test", "/x").header("X-Backend"))
-            val states = h.kovexy.upstreams.group("app")!!.servers.associate { it.address.port to it.healthy }
+            val states = h.kovexy.backends.group("app")!!.servers.associate { it.address.port to it.healthy }
             assertEquals(false, states[one.port])
             assertEquals(true, states[backupPort])
         }
@@ -49,11 +49,11 @@ class TargetsTest {
     @Test
     fun singleServerIsUsedEvenWhenDownAndAnswers502(): Unit = runBlocking {
         val port = freePort()
-        Harness("""{ "admin": { "port": ADMIN_PORT }, "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$port" } ] } ],
-            "sites": [ ${site("""{ "type": "upstream", "upstream": "app" }""")} ] }""").use { h ->
+        Harness("""{ "admin": { "port": ADMIN_PORT }, "backends": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$port" } ] } ],
+            "domains": [ ${domain("""{ "type": "backend", "backend": "app" }""")} ] }""").use { h ->
             assertEquals(502, h.https("a.test", "/").status)
             val backend = TestBackend(port)
-            // Zoraxy: a group with one server always tries it, so the upstream is back at once after a restart
+            // Zoraxy: a group with one server always tries it, so the backend is back at once after a restart
             assertEquals(200, h.https("a.test", "/").status)
             backend.close()
         }
@@ -65,9 +65,9 @@ class TargetsTest {
         val two = TestBackend(name = "two")
         fun config(check: String) = """
             { "admin": { "port": ADMIN_PORT },
-              "upstreams": [ { "name": "app", "stickySession": true, $check
+              "backends": [ { "name": "app", "stickySession": true, $check
                 "servers": [ { "address": "127.0.0.1:${one.port}" }, { "address": "127.0.0.1:${two.port}" } ] } ],
-              "sites": [ ${site("""{ "type": "upstream", "upstream": "app" }""")} ] }
+              "domains": [ ${domain("""{ "type": "backend", "backend": "app" }""")} ] }
         """.trimIndent()
         Harness(config("")).use { h ->
             val first = h.https("a.test", "/x")
@@ -81,10 +81,10 @@ class TargetsTest {
             h.writeConfigByHand(config(""" "healthCheck": { "path": "/status/503", "interval": "1s", "expectStatus": 200 }, """))
             // /status/503 never answers 200: the active check marks both servers down within a few seconds
             repeat(50) {
-                if (h.kovexy.upstreams.group("app")!!.servers.none { it.healthy }) return@repeat
+                if (h.kovexy.backends.group("app")!!.servers.none { it.healthy }) return@repeat
                 delay(100)
             }
-            assertTrue(h.kovexy.upstreams.group("app")!!.servers.none { it.healthy })
+            assertTrue(h.kovexy.backends.group("app")!!.servers.none { it.healthy })
             assertEquals(502, h.https("a.test", "/x").status)
         }
         one.close()
@@ -102,9 +102,9 @@ class TargetsTest {
         Files.createSymbolicLink(File(root, "escape").toPath(), outside.toPath())
         File(root, "linked").mkdirs()
         Files.createSymbolicLink(File(root, "linked/index.html").toPath(), File(outside, "secret.txt").toPath())
-        val config = """{ "admin": { "port": ADMIN_PORT }, "sites": [
-            ${site("""{ "type": "static", "root": "${root.absolutePath}" }""")},
-            ${site("""{ "type": "static", "root": "${root.absolutePath}", "directoryListing": true }""", "list.test")} ] }"""
+        val config = """{ "admin": { "port": ADMIN_PORT }, "domains": [
+            ${domain("""{ "type": "static", "root": "${root.absolutePath}" }""")},
+            ${domain("""{ "type": "static", "root": "${root.absolutePath}", "directoryListing": true }""", "list.test")} ] }"""
         Harness(config).use { h ->
             assertEquals("<h1>home</h1>", h.https("a.test", "/").text)
             val file = h.https("a.test", "/docs/a.txt")
@@ -124,31 +124,31 @@ class TargetsTest {
     }
 
     @Test
-    fun defaultSiteVariants(): Unit = runBlocking {
+    fun fallbackVariants(): Unit = runBlocking {
         Harness("""{ "admin": { "port": ADMIN_PORT } }""").use { h ->
             val page = h.https("unknown.test", "/")
             assertEquals(200, page.status)
             assertTrue(page.text.contains("It works"))
 
-            h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "defaultSite": { "type": "redirect", "url": "https://other.test" } }""")
+            h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "fallback": { "type": "redirect", "url": "https://other.test" } }""")
             val redirect = h.https("unknown.test", "/p?q=1")
             assertEquals(307, redirect.status)
             assertEquals("https://other.test/p?q=1", redirect.header("Location"))
             assertEquals(500, h.https("other.test", "/").status, "A redirect to itself is refused")
 
-            h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "defaultSite": { "type": "noResponse" } }""")
+            h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "fallback": { "type": "noResponse" } }""")
             val empty = h.https("unknown.test", "/")
             assertEquals(204, empty.status, "noResponse is an empty answer, without reflection on Ktor internals")
             assertEquals("close", empty.header("Connection"))
 
-            h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "defaultSite": { "type": "notFound" } }""")
+            h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "fallback": { "type": "notFound" } }""")
             assertEquals(404, h.https("unknown.test", "/").status)
         }
     }
 
     @Test
     fun acmeChallengeIsAnsweredFirst(): Unit = runBlocking {
-        Harness("""{ "admin": { "port": ADMIN_PORT }, "sites": [ ${site("""{ "type": "deny", "status": 403 }""")} ] }""").use { h ->
+        Harness("""{ "admin": { "port": ADMIN_PORT }, "domains": [ ${domain("""{ "type": "deny", "status": 403 }""")} ] }""").use { h ->
             h.kovexy.challenges.put("token123", "token123.key")
             val answer = rawRequest(h.ports.http, "a.test", "/.well-known/acme-challenge/token123")
             assertEquals(200, answer.status)

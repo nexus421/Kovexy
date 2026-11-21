@@ -23,7 +23,7 @@ import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 
-/** Prefix of Kovexy's own paths on every domain. Never forwarded to an upstream. */
+/** Prefix of Kovexy's own paths on every domain. Never forwarded to a backend. */
 const val RESERVED_PREFIX = "/.kovexy/"
 
 /** The captcha script, read once from the JAR. */
@@ -35,8 +35,8 @@ private val CAPTCHA_SCRIPT: ByteArray by lazy {
 data class ReservedResult(val status: Int, val reason: String)
 
 /**
- * Answers the reserved paths `/.kovexy/...` of a site: the captcha script and the verification of its answer. They
- * run before the locations, nothing of it reaches an upstream.
+ * Answers the reserved paths `/.kovexy/...` of a domain: the captcha script and the verification of its answer. They
+ * run before the routes, nothing of it reaches a backend.
  */
 class ReservedPaths(
     private val captcha: CaptchaService,

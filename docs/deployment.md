@@ -42,7 +42,7 @@ With `DynamicUser` systemd makes the file system read only (`ProtectSystem=stric
 | `/var/lib/kovexy/kovexy.json` | Whole configuration | `0600` |
 | `/var/lib/kovexy/kovexy.db` | SQLite: access log, statistics, sessions | `0600` |
 | `/var/lib/kovexy/certs/` | Certificates, keys, ACME account key | `0700` / `0600` |
-| `/var/lib/kovexy/www/` | Default site | `0755` |
+| `/var/lib/kovexy/www/` | Fallback | `0755` |
 | `/var/lib/kovexy/logs/app.log` | Program log, also in the journal | `0600` |
 | `/var/lib/kovexy/backups/` | Copies before every save, restore points | `0700` |
 
@@ -50,13 +50,13 @@ With `DynamicUser` systemd makes the file system read only (`ProtectSystem=stric
 
 The admin UI listens on `127.0.0.1:8000`. To reach it under a domain with a certificate, like Zoraxy:
 
-1. Add an upstream group `kovexy-admin` with the server `127.0.0.1:8000`.
-2. Add a site `proxy.example.com` with the location `/` to that group.
+1. Add a backend `kovexy-admin` with the server `127.0.0.1:8000`.
+2. Add a domain `proxy.example.com` with the route `/` to that backend.
 3. Set Settings, Public URL to `https://proxy.example.com`.
 
 Requests then reach the admin UI from `127.0.0.1`. Kovexy's proxy hands the real visitor address (after
 `trustedProxies`) to the admin UI in a header signed with a secret of the running process, so login lockouts and logs
-see the real address. `X-Forwarded-For` is never believed by the admin UI, any local process could set it. Restrict that site with an access profile, e.g. an allow list for
+see the real address. `X-Forwarded-For` is never believed by the admin UI, any local process could set it. Restrict that domain with an access profile, e.g. an allow list for
 your home network.
 
 ## Ports

@@ -150,7 +150,7 @@ private suspend fun ApplicationCall.webhookForm(kovexy: Kovexy, name: String?, h
                 textAreaField("Headers", "headers", hook.headers.entries.joinToString("\n") { "${it.key}: ${it.value}" }, rows = 2,
                     hint = "One per line, Name: value. Without Content-Type Kovexy sends application/json.")
                 textAreaField("Template", "template", hook.template, rows = 4, required = true,
-                    hint = "Placeholders: {{event}}, {{subject}}, {{body}}, {{time}}, {{site}}. Values are escaped for JSON strings.")
+                    hint = "Placeholders: {{event}}, {{subject}}, {{body}}, {{time}}, {{domain}}. Values are escaped for JSON strings.")
                 fieldSet {
                     legend { +"Events" }
                     WebhookEvent.entries.forEach { event ->

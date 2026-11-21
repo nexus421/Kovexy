@@ -1,12 +1,12 @@
 package bayern.kickner.kovexy.web
 
 import bayern.kickner.kovexy.Kovexy
-import bayern.kickner.kovexy.config.DefaultSite
+import bayern.kickner.kovexy.config.Fallback
 import bayern.kickner.kovexy.config.HealthCheckConfig
 import bayern.kickner.kovexy.config.KovexyConfig
 import bayern.kickner.kovexy.config.Target
-import bayern.kickner.kovexy.config.UpstreamConfig
-import bayern.kickner.kovexy.config.UpstreamServerConfig
+import bayern.kickner.kovexy.config.BackendConfig
+import bayern.kickner.kovexy.config.BackendServerConfig
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.server.application.ApplicationCall
@@ -38,23 +38,23 @@ import kotlin.time.Duration
 /** Empty server rows below the existing ones in the form. */
 private const val EMPTY_SERVER_ROWS = 2
 
-/** Upstream groups with their servers. */
-fun Route.upstreamRoutes(kovexy: Kovexy) {
-    get("/upstreams") {
-        call.page("Upstreams", call.session, Nav.UPSTREAMS) {
-            pageHeader("Upstreams", "Groups of servers behind the proxy, with load balancing and health checks.") {
-                linkButton("/upstreams/new", "Add upstream group", "primary")
+/** Backends with their servers. */
+fun Route.backendRoutes(kovexy: Kovexy) {
+    get("/backends") {
+        call.page("Backends", call.session, Nav.BACKENDS) {
+            pageHeader("Backends", "The servers behind the proxy, with load balancing and health checks.") {
+                linkButton("/backends/new", "Add backend", "primary")
             }
-            val groups = kovexy.upstreams.all()
+            val groups = kovexy.backends.all()
             card {
-                if (groups.isEmpty()) p("muted") { +"No upstream groups yet." }
+                if (groups.isEmpty()) p("muted") { +"No backends yet." }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Group" }; th { +"Servers" }; th { +"Health check" }; th { } } }
+                        thead { tr { th { +"Backend" }; th { +"Servers" }; th { +"Health check" }; th { } } }
                         tbody {
                             groups.forEach { group ->
                                 tr {
-                                    td { attributes["data-label"] = "Group"; a(href = "/upstreams/${urlPart(group.config.name)}") { +group.config.name } }
+                                    td { attributes["data-label"] = "Backend"; a(href = "/backends/${urlPart(group.config.name)}") { +group.config.name } }
                                     td {
                                         attributes["data-label"] = "Servers"
                                         group.servers.forEach { server ->
@@ -74,7 +74,7 @@ fun Route.upstreamRoutes(kovexy: Kovexy) {
                                         val check = group.config.healthCheck
                                         +(if (check.path.isEmpty()) "passive only" else "GET ${check.path} every ${check.interval}")
                                     }
-                                    td("actions") { linkButton("/upstreams/${urlPart(group.config.name)}", "Edit", "sm") }
+                                    td("actions") { linkButton("/backends/${urlPart(group.config.name)}", "Edit", "sm") }
                                 }
                             }
                         }
@@ -84,70 +84,70 @@ fun Route.upstreamRoutes(kovexy: Kovexy) {
         }
     }
 
-    get("/upstreams/new") { call.upstreamForm(kovexy, null, UpstreamConfig("", emptyList()), emptyList(), null) }
+    get("/backends/new") { call.backendForm(kovexy, null, BackendConfig("", emptyList()), emptyList(), null) }
 
-    post("/upstreams/new") {
+    post("/backends/new") {
         val params = call.receiveForm()
-        val (group, parseProblems) = upstreamFromForm(params)
-        val problems = parseProblems.ifEmpty { call.saveConfig(params["version"]) { it.copy(upstreams = it.upstreams + group) } }
-        if (problems == null) return@post call.respondRedirect("/upstreams?done=upstream-saved")
-        call.upstreamForm(kovexy, null, group, problems, params["version"])
+        val (group, parseProblems) = backendFromForm(params)
+        val problems = parseProblems.ifEmpty { call.saveConfig(params["version"]) { it.copy(backends = it.backends + group) } }
+        if (problems == null) return@post call.respondRedirect("/backends?done=backend-saved")
+        call.backendForm(kovexy, null, group, problems, params["version"])
     }
 
-    get("/upstreams/{name}") {
+    get("/backends/{name}") {
         val name = call.parameters["name"]!!
-        val group = kovexy.config.upstreams.firstOrNull { it.name == name } ?: return@get call.notFoundUpstream()
-        call.upstreamForm(kovexy, name, group, emptyList(), null)
+        val group = kovexy.config.backends.firstOrNull { it.name == name } ?: return@get call.notFoundBackend()
+        call.backendForm(kovexy, name, group, emptyList(), null)
     }
 
-    post("/upstreams/{name}") {
+    post("/backends/{name}") {
         val name = call.parameters["name"]!!
-        if (kovexy.config.upstreams.none { it.name == name }) return@post call.notFoundUpstream()
+        if (kovexy.config.backends.none { it.name == name }) return@post call.notFoundBackend()
         val params = call.receiveForm()
-        val (group, parseProblems) = upstreamFromForm(params)
+        val (group, parseProblems) = backendFromForm(params)
         val problems = parseProblems.ifEmpty {
             call.saveConfig(params["version"]) { c ->
-                c.copy(upstreams = c.upstreams.map { if (it.name == name) group else it }).renameUpstream(name, group.name)
+                c.copy(backends = c.backends.map { if (it.name == name) group else it }).renameBackend(name, group.name)
             }
         }
-        if (problems == null) return@post call.respondRedirect("/upstreams?done=upstream-saved")
-        call.upstreamForm(kovexy, name, group, problems, params["version"])
+        if (problems == null) return@post call.respondRedirect("/backends?done=backend-saved")
+        call.backendForm(kovexy, name, group, problems, params["version"])
     }
 
-    post("/upstreams/{name}/delete") {
+    post("/backends/{name}/delete") {
         val name = call.parameters["name"]!!
-        val group = kovexy.config.upstreams.firstOrNull { it.name == name } ?: return@post call.notFoundUpstream()
+        val group = kovexy.config.backends.firstOrNull { it.name == name } ?: return@post call.notFoundBackend()
         val params = call.receiveForm()
-        val problems = call.saveConfig(params["version"]) { c -> c.copy(upstreams = c.upstreams.filter { it.name != name }) }
-        if (problems == null) return@post call.respondRedirect("/upstreams?done=upstream-deleted")
-        call.upstreamForm(kovexy, name, group, problems, params["version"])
+        val problems = call.saveConfig(params["version"]) { c -> c.copy(backends = c.backends.filter { it.name != name }) }
+        if (problems == null) return@post call.respondRedirect("/backends?done=backend-deleted")
+        call.backendForm(kovexy, name, group, problems, params["version"])
     }
 }
 
-private suspend fun ApplicationCall.notFoundUpstream() =
-    errorPage(HttpStatusCode.NotFound, "Upstream group not found", "This upstream group does not exist (any more).")
+private suspend fun ApplicationCall.notFoundBackend() =
+    errorPage(HttpStatusCode.NotFound, "Backend not found", "This backend does not exist (any more).")
 
-/** Points every target that uses [old] to [new], so renaming a group keeps the sites working. */
-private fun KovexyConfig.renameUpstream(old: String, new: String): KovexyConfig {
+/** Points every target that uses [old] to [new], so renaming a backend keeps the domains working. */
+private fun KovexyConfig.renameBackend(old: String, new: String): KovexyConfig {
     if (old == new) return this
     return copy(
-        sites = sites.map { site ->
-            site.copy(locations = site.locations.map { location ->
-                val target = location.target
-                if (target is Target.Upstream && target.upstream == old) location.copy(target = Target.Upstream(new)) else location
+        domains = domains.map { domain ->
+            domain.copy(routes = domain.routes.map { route ->
+                val target = route.target
+                if (target is Target.Backend && target.backend == old) route.copy(target = Target.Backend(new)) else route
             })
         },
-        defaultSite = (defaultSite as? DefaultSite.Upstream)?.takeIf { it.upstream == old }?.let { DefaultSite.Upstream(new) } ?: defaultSite,
+        fallback = (fallback as? Fallback.Backend)?.takeIf { it.backend == old }?.let { Fallback.Backend(new) } ?: fallback,
     )
 }
 
-private fun upstreamFromForm(params: Parameters): Pair<UpstreamConfig, List<String>> {
+private fun backendFromForm(params: Parameters): Pair<BackendConfig, List<String>> {
     val problems = mutableListOf<String>()
     val count = params["serverCount"]?.toIntOrNull()?.coerceIn(0, 200) ?: 0
     val servers = (0 until count).mapNotNull { k ->
         val address = params["s$k.address"].orEmpty().trim()
         if (address.isEmpty()) return@mapNotNull null
-        UpstreamServerConfig(
+        BackendServerConfig(
             address = address,
             tls = params["s$k.tls"] != null,
             skipCertVerify = params["s$k.skip"] != null,
@@ -157,7 +157,7 @@ private fun upstreamFromForm(params: Parameters): Pair<UpstreamConfig, List<Stri
     }
     val interval = parseDuration("Health check interval", params["interval"], problems)
     val timeout = parseDuration("Health check timeout", params["timeout"], problems)
-    val group = UpstreamConfig(
+    val group = BackendConfig(
         name = params["name"].orEmpty().trim(),
         servers = servers,
         stickySession = params["sticky"] != null,
@@ -180,18 +180,18 @@ fun parseDuration(label: String, text: String?, problems: MutableList<String>): 
     }
 }
 
-private suspend fun ApplicationCall.upstreamForm(kovexy: Kovexy, name: String?, group: UpstreamConfig, problems: List<String>, posted: String?) {
+private suspend fun ApplicationCall.backendForm(kovexy: Kovexy, name: String?, group: BackendConfig, problems: List<String>, posted: String?) {
     val version = posted ?: kovexy.configStore.current.version
-    val title = if (name == null) "Add upstream group" else "Upstream $name"
-    val rows = group.servers + List(EMPTY_SERVER_ROWS) { UpstreamServerConfig("") }
-    val action = if (name == null) "/upstreams/new" else "/upstreams/${urlPart(name)}"
-    page(title, session, Nav.UPSTREAMS, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
-        pageHeader(title) { linkButton("/upstreams", "All upstreams", "ghost") }
+    val title = if (name == null) "Add backend" else "Backend $name"
+    val rows = group.servers + List(EMPTY_SERVER_ROWS) { BackendServerConfig("") }
+    val action = if (name == null) "/backends/new" else "/backends/${urlPart(name)}"
+    page(title, session, Nav.BACKENDS, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
+        pageHeader(title) { linkButton("/backends", "All backends", "ghost") }
         if (problems.isNotEmpty()) problems("Not saved:", problems)
         card {
             form(action = action, method = FormMethod.post, classes = "form") {
                 versionField(version)
-                textField("Name", "name", group.name, hint = "Sites refer to the group by this name. Renaming updates them.")
+                textField("Name", "name", group.name, hint = "Routes refer to the backend by this name. Renaming updates them.")
                 fieldSet {
                     legend { +"Servers" }
                     p("muted small") {
@@ -234,12 +234,12 @@ private suspend fun ApplicationCall.upstreamForm(kovexy: Kovexy, name: String?, 
                         textField("Timeout", "timeout", group.healthCheck.timeout.toString())
                     }
                 }
-                div("btn-row") { submit("Save upstream group") }
+                div("btn-row") { submit("Save backend") }
             }
         }
-        if (name != null) card("Delete upstream group", "danger gap-top") {
-            p("muted") { +"Only possible while no site and not the default site use it." }
-            postButton("$action/delete", "Delete upstream group", "danger", confirm = "Delete this upstream group?", hidden = mapOf("version" to version))
+        if (name != null) card("Delete backend", "danger gap-top") {
+            p("muted") { +"Only possible while no domain and not the fallback use it." }
+            postButton("$action/delete", "Delete backend", "danger", confirm = "Delete this backend?", hidden = mapOf("version" to version))
         }
     }
 }

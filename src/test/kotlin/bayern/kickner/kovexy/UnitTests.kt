@@ -11,10 +11,10 @@ import bayern.kickner.kovexy.config.HostPort
 import bayern.kickner.kovexy.config.KovexyConfig
 import bayern.kickner.kovexy.config.LETS_ENCRYPT_PRODUCTION
 import bayern.kickner.kovexy.config.LETS_ENCRYPT_STAGING
-import bayern.kickner.kovexy.config.LocationConfig
+import bayern.kickner.kovexy.config.RouteConfig
 import bayern.kickner.kovexy.config.MatchType
 import bayern.kickner.kovexy.config.SaveError
-import bayern.kickner.kovexy.config.SiteConfig
+import bayern.kickner.kovexy.config.DomainConfig
 import bayern.kickner.kovexy.config.Target
 import bayern.kickner.kovexy.config.WebhookConfig
 import bayern.kickner.kovexy.config.WebhookEvent
@@ -23,7 +23,7 @@ import bayern.kickner.kovexy.config.parseConfig
 import bayern.kickner.kovexy.notify.Event
 import bayern.kickner.kovexy.notify.Webhooks
 import bayern.kickner.kovexy.notify.fillTemplate
-import bayern.kickner.kovexy.proxy.CompiledSite
+import bayern.kickner.kovexy.proxy.CompiledDomain
 import bayern.kickner.kovexy.proxy.HeaderList
 import bayern.kickner.kovexy.proxy.isValidPath
 import bayern.kickner.kovexy.access.matchCommonExploit
@@ -64,10 +64,10 @@ class ConfigTest {
         assertIs<ResultOf2.Success<KovexyConfig>>(parsed)
         assertEquals(KovexyConfig(), parsed.value)
         assertEquals("{}\n", encodeConfig(KovexyConfig()))
-        val withSite = KovexyConfig(sites = listOf(SiteConfig(listOf("a.test"), locations = listOf(LocationConfig("/", target = Target.Deny())))))
-        val text = encodeConfig(withSite)
+        val withDomain = KovexyConfig(domains = listOf(DomainConfig(listOf("a.test"), routes = listOf(RouteConfig("/", target = Target.Deny())))))
+        val text = encodeConfig(withDomain)
         assertTrue(text.contains("\"type\": \"deny\""), text)
-        assertEquals(withSite, (parseConfig(text) as ResultOf2.Success).value)
+        assertEquals(withDomain, (parseConfig(text) as ResultOf2.Success).value)
     }
 
     @Test
@@ -80,10 +80,10 @@ class ConfigTest {
             { "admin": { "port": 443, "loginMode": "oidc", "session": { "idleTimeout": "30s" } },
               "listeners": [ { "name": "http", "port": 8080, "tls": false } ],
               "trustedProxies": ["nope"],
-              "sites": [ { "domains": ["*.a.test", "a.test"], "access": "x", "locations": [
-                { "path": "api/", "target": { "type": "upstream", "upstream": "missing" } },
+              "domains": [ { "names": ["*.a.test", "a.test"], "access": "x", "routes": [
+                { "path": "api/", "target": { "type": "backend", "backend": "missing" } },
                 { "path": "/x/", "target": { "type": "redirect", "url": "ftp://x", "status": 302 } } ] },
-                { "domains": ["a.test"] } ] }
+                { "names": ["a.test"] } ] }
             """
         )
         assertIs<ResultOf2.Failure<List<String>>>(broken)
@@ -91,7 +91,7 @@ class ConfigTest {
         listOf(
             "admin.port must not be a proxy port", "needs admin.oidc", "needs admin.publicUrl", "idleTimeout", "listeners cannot be changed", "trustedProxies[0]",
             "without wildcard", "is no access profile", "must start with /", "does not exist", "must not end with a slash",
-            "absolute https URL", "301 or 307", "belongs to more than one site",
+            "absolute https URL", "301 or 307", "belongs to more than one domain",
         ).forEach { assertTrue(all.contains(it), "Missing \"$it\" in:\n$all") }
     }
 
@@ -131,7 +131,7 @@ class ConfigTest {
 }
 
 class RoutingTest {
-    private fun loc(path: String, match: MatchType = MatchType.PREFIX) = LocationConfig(path, match, target = Target.Deny())
+    private fun loc(path: String, match: MatchType = MatchType.PREFIX) = RouteConfig(path, match, target = Target.Deny())
 
     @Test
     fun normalizesPaths() {
@@ -151,14 +151,14 @@ class RoutingTest {
     }
 
     @Test
-    fun mostSpecificLocationWinsAtPathBoundaries() {
-        val site = CompiledSite(SiteConfig(listOf("a.test"), locations = listOf(loc("/"), loc("/api"), loc("/api", MatchType.EXACT), loc("/api/v2"))))
-        assertEquals("/", site.locationFor("/apix")?.path)
-        assertEquals(MatchType.EXACT, site.locationFor("/api")?.match)
-        assertEquals(MatchType.PREFIX, site.locationFor("/api/users")?.match)
-        assertEquals("/api/v2", site.locationFor("/api/v2/x")?.path)
-        assertEquals("/api", site.locationFor("/api/v22")?.path)
-        assertNull(CompiledSite(SiteConfig(listOf("a.test"), locations = listOf(loc("/x")))).locationFor("/y"))
+    fun mostSpecificRouteWinsAtPathBoundaries() {
+        val domain = CompiledDomain(DomainConfig(listOf("a.test"), routes = listOf(loc("/"), loc("/api"), loc("/api", MatchType.EXACT), loc("/api/v2"))))
+        assertEquals("/", domain.routeFor("/apix")?.path)
+        assertEquals(MatchType.EXACT, domain.routeFor("/api")?.match)
+        assertEquals(MatchType.PREFIX, domain.routeFor("/api/users")?.match)
+        assertEquals("/api/v2", domain.routeFor("/api/v2/x")?.path)
+        assertEquals("/api", domain.routeFor("/api/v22")?.path)
+        assertNull(CompiledDomain(DomainConfig(listOf("a.test"), routes = listOf(loc("/x")))).routeFor("/y"))
     }
 
     @Test
@@ -354,10 +354,10 @@ class CertificateTest {
 class WebhookTest {
     @Test
     fun templateValuesAreJsonEscaped() {
-        val event = Event(WebhookEvent.UPSTREAM_DOWN, "Quote \" and\nnewline", "body", "a.test", 0)
-        val text = fillTemplate("""{"subject": "{{subject}}", "event": "{{event}}", "site": "{{site}}"}""", event)
+        val event = Event(WebhookEvent.BACKEND_DOWN, "Quote \" and\nnewline", "body", "a.test", 0)
+        val text = fillTemplate("""{"subject": "{{subject}}", "event": "{{event}}", "domain": "{{domain}}"}""", event)
         val json = Json.parseToJsonElement(text).toString()
-        assertTrue(json.contains("upstreamDown"))
+        assertTrue(json.contains("backendDown"))
         assertTrue(text.contains("Quote \\\" and\\nnewline"))
     }
 
@@ -369,7 +369,7 @@ class WebhookTest {
             template = "{{subject}}")
         val webhooks = Webhooks(scope, { listOf(hook) }) { _, body -> sent += body; 200 }
         repeat(5) { webhooks.emit(Event(WebhookEvent.ADMIN_LOGIN_FAILED, "Failed admin login from 1.1.1.$it", "", time = 0, item = "1.1.1.$it")) }
-        webhooks.emit(Event(WebhookEvent.UPSTREAM_DOWN, "not selected", "", time = 0))
+        webhooks.emit(Event(WebhookEvent.BACKEND_DOWN, "not selected", "", time = 0))
         webhooks.emit(Event(WebhookEvent.CERT_FAILED, "single", "", time = 0))
         delay(1500)
         assertEquals(setOf("Failed admin login from 1.1.1.0", "4 more failed admin logins", "single"), sent.toSet())

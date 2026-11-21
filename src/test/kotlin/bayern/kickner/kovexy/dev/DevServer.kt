@@ -25,9 +25,9 @@ const val DEV_OIDC_PORT = 18001
 const val DEV_PASSWORD = "kovexy dev password only"
 
 /**
- * Starts Kovexy for local development with two demo upstreams and the [MockOidcProvider]: run `./gradlew devRun`
+ * Starts Kovexy for local development with two demo backends and the [MockOidcProvider]: run `./gradlew devRun`
  * and open `http://localhost:18000`, log in through the mock provider (login mode `oidc`, the password
- * [DEV_PASSWORD] is set as well for switching the mode). `http://app.localhost:18080` reaches the demo upstreams
+ * [DEV_PASSWORD] is set as well for switching the mode). `http://app.localhost:18080` reaches the demo backends
  * through the proxy. Data lives in `build/dev`, delete it to start over. ACME cannot reach this machine, so the
  * certificate pages show failures, that is expected.
  */
@@ -51,12 +51,12 @@ fun main() {
                 { "name": "demo-protection", "exploitFilter": { "commonExploits": true }, "trapPaths": { "enabled": true }, "rateLimit": { "requestsPerSecond": 50 } }
               ],
               "acme": { "staging": true },
-              "upstreams": [
+              "backends": [
                 { "name": "demo", "servers": [ { "address": "127.0.0.1:${first.port}" }, { "address": "127.0.0.1:${second.port}", "weight": 2 } ] }
               ],
-              "sites": [
-                { "domains": ["app.localhost"], "access": "demo-protection", "locations": [
-                  { "path": "/", "target": { "type": "upstream", "upstream": "demo" } },
+              "domains": [
+                { "names": ["app.localhost"], "access": "demo-protection", "routes": [
+                  { "path": "/", "target": { "type": "backend", "backend": "demo" } },
                   { "path": "/.git", "target": { "type": "deny", "status": 404 } }
                 ] }
               ]
@@ -64,7 +64,7 @@ fun main() {
             """.trimIndent()
         )
     } else {
-        // The demo upstreams get new ports on every start
+        // The demo backends get new ports on every start
         var n = 0
         config.writeText(config.readText().replace(Regex("""127\.0\.0\.1:\d+""")) { "127.0.0.1:${if (n++ == 0) first.port else second.port}" })
     }

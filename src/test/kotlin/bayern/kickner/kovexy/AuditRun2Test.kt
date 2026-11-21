@@ -189,7 +189,7 @@ class AuditRun2Test {
     }
 
     @Test
-    fun upstreamCertificatesMustNameTheHost() {
+    fun backendCertificatesMustNameTheHost() {
         fun cert(vararg names: GeneralName): X509Certificate {
             val pair = bayern.kickner.kovexy.tls.newEcKeyPair()
             val name = X500Name("CN=evil.example")

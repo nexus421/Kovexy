@@ -101,7 +101,7 @@ fun rawRequest(
     }
 }
 
-/** One HTTPS request to the TLS proxy port, the way every site is reached (port 80 only redirects). */
+/** One HTTPS request to the TLS proxy port, the way every domain is reached (port 80 only redirects). */
 fun Harness.https(
     host: String,
     path: String = "/",
@@ -155,7 +155,7 @@ fun sha256(bytes: ByteArray): String = HexFormat.of().formatHex(MessageDigest.ge
 fun testBytes(size: Int): ByteArray = ByteArray(size) { (it * 31 + 7).toByte() }
 
 /**
- * A small upstream server for tests (Ktor CIO):
+ * A small backend server for tests (Ktor CIO):
  *
  * - `/echo...` answers with method, URI and every request header, one per line,
  * - `/big/{size}` streams [testBytes] of that size,

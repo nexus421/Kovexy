@@ -20,8 +20,8 @@ import bayern.kickner.kovexy.proxy.Ports
 import bayern.kickner.kovexy.proxy.ProxyHandler
 import bayern.kickner.kovexy.proxy.ProxyServer
 import bayern.kickner.kovexy.proxy.RoutingTable
-import bayern.kickner.kovexy.proxy.UpstreamClientHolder
-import bayern.kickner.kovexy.proxy.UpstreamPool
+import bayern.kickner.kovexy.proxy.BackendClientHolder
+import bayern.kickner.kovexy.proxy.BackendPool
 import bayern.kickner.kovexy.proxy.WebSocketRegistry
 import bayern.kickner.kovexy.site.defaultIndexPage
 import bayern.kickner.kovexy.stats.AccessLog
@@ -83,8 +83,8 @@ const val PASSWORD_ONLY_WARNING = "The admin UI is protected by a password only.
  * @property keyManager Certificates in use.
  * @property certificates Issuing and renewing.
  * @property challenges Open ACME challenges.
- * @property upstreams Upstream groups with their state.
- * @property clients HTTP clients for upstreams.
+ * @property backends Backends with their state.
+ * @property clients HTTP clients for backends.
  * @property health Health checks.
  * @property webSockets Open proxied WebSockets.
  * @property webhooks Notifications.
@@ -110,8 +110,8 @@ class Kovexy internal constructor(
     val keyManager: DynamicKeyManager,
     val certificates: CertificateManager,
     val challenges: ChallengeStore,
-    val upstreams: UpstreamPool,
-    val clients: UpstreamClientHolder,
+    val backends: BackendPool,
+    val clients: BackendClientHolder,
     val health: HealthChecker,
     val webSockets: WebSocketRegistry,
     val webhooks: Webhooks,
@@ -134,10 +134,10 @@ class Kovexy internal constructor(
             rebuildRouting()
             // A removed or changed route also ends the WebSockets it admitted
             val table = routing
-            val servers = upstreams.all().flatMap { group -> group.servers.map { it.address.toString() } }.toSet()
-            webSockets.closeWhere(scope, "after an Incus route was removed") { tag ->
-                // The default site's traffic has no site route of its own, only its upstream can go away
-                tag.upstream !in servers || (tag.viaSite && table.servesDomain(tag.domain).not())
+            val servers = backends.all().flatMap { group -> group.servers.map { it.address.toString() } }.toSet()
+            webSockets.closeWhere(scope, "after an Incus domain was removed") { tag ->
+                // The fallback's traffic has no domain route of its own, only its backend can go away
+                tag.backend !in servers || (tag.viaDomain && table.servesDomain(tag.domain).not())
             }
         }
     }
@@ -148,15 +148,15 @@ class Kovexy internal constructor(
         private set
 
     /**
-     * Builds the routing table from the active config and the live Incus claims. Upstream groups and wanted
+     * Builds the routing table from the active config and the live Incus claims. Backends and wanted
      * certificates follow, so a newly approved container gets its certificate at once.
      */
     @Synchronized
     fun rebuildRouting() {
         val effective = withIncusRoutes(config, incus.claims)
-        upstreams.reconcile(effective.upstreams)
-        // Clients of hosts that no upstream uses any more (an edited address, an Incus container with a new IP) go away
-        clients.current.retainHosts(upstreams.all().flatMap { group -> group.servers.map { it.address.host } }.toSet())
+        backends.reconcile(effective.backends)
+        // Clients of hosts that no backend uses any more (an edited address, an Incus container with a new IP) go away
+        clients.current.retainHosts(backends.all().flatMap { group -> group.servers.map { it.address.host } }.toSet())
         routing = RoutingTable(effective)
         certificates.setWanted(routing.tlsDomains())
     }
@@ -167,7 +167,7 @@ class Kovexy internal constructor(
     /** Handles proxy requests. */
     val proxy = ProxyHandler(
         routing = { routing },
-        pool = upstreams,
+        pool = backends,
         clients = { clients.current },
         challenges = challenges,
         accessLog = accessLog,
@@ -201,7 +201,7 @@ class Kovexy internal constructor(
     val startedAt: Long = clock()
 
     init {
-        upstreams.reconcile(config.upstreams)
+        backends.reconcile(config.backends)
         configStore.onChange { old, new, source, actor -> apply(old, new, source, actor) }
         configStore.onInvalid { problems ->
             webhooks.emit(Event(WebhookEvent.CONFIG_INVALID, "Configuration file rejected", problems.joinToString("\n"), time = clock()))
@@ -255,7 +255,7 @@ class Kovexy internal constructor(
     }
 
     /**
-     * Applies a new config while running: new routing table in one step, upstream groups, admin connector, limits,
+     * Applies a new config while running: new routing table in one step, backends, admin connector, limits,
      * wanted certificates. Open WebSockets are closed after `webSocketCloseDelay`, like Caddy. Requests that already
      * run finish with the version they started with.
      */
@@ -328,7 +328,7 @@ fun createKovexy(
     // Issued certificates also go to the audit log
     val events = EventSink { event ->
         webhooks.emit(event)
-        if (event.type == WebhookEvent.CERT_ISSUED) audit.record(Actor.SYSTEM, AuditAction.CERT_ISSUED, event.site)
+        if (event.type == WebhookEvent.CERT_ISSUED) audit.record(Actor.SYSTEM, AuditAction.CERT_ISSUED, event.domain)
     }
     // Always loaded, the statistics show countries too (decided on 18.11.2026)
     val geo = Geo(File(dataDir, "geo"), clock = clock)
@@ -342,8 +342,8 @@ fun createKovexy(
     val challenges = ChallengeStore()
     val email = { config().acme.email }
     val certIssuer = issuer?.invoke(certStore, challenges, email) ?: Acme4jIssuer(certStore, challenges, email)
-    val upstreams = UpstreamPool()
-    val clients = UpstreamClientHolder(config().limits, scope)
+    val backends = BackendPool()
+    val clients = BackendClientHolder(config().limits, scope)
     return Kovexy(
         dataDir = dataDir,
         configStore = configStore,
@@ -358,9 +358,9 @@ fun createKovexy(
             onRemoved = { domain -> audit.record(Actor.SYSTEM, AuditAction.CERT_REMOVED, domain) }, clock = clock,
         ),
         challenges = challenges,
-        upstreams = upstreams,
+        backends = backends,
         clients = clients,
-        health = HealthChecker(upstreams, { clients.current }, webhooks, clock),
+        health = HealthChecker(backends, { clients.current }, webhooks, clock),
         webSockets = webSockets,
         webhooks = webhooks,
         updates = UpdateCheck({ config().updateCheck }, clock, fetchLatest = latestRelease),

@@ -46,12 +46,12 @@ picked up as well. Every change is checked completely and applied while running:
 | `acme` | see below | Certificates |
 | `listeners` | 80 plain, 443 TLS | Fixed in this version, a different value is an error. More ports per domain are deferred |
 | `trustedProxies` | `[]` | IPs or CIDR ranges whose `X-Forwarded-*` headers are believed |
-| `defaultSite` | static files from `<dataDir>/www` | Answer for domains no site serves |
+| `fallback` | static files from `<dataDir>/www` | Answer for requests to names that no domain serves |
 | `accessProfiles` | `[]` | Reusable access profiles, see below |
 | `aiCrawlers` | no changes | Changes to the shipped AI crawler list for every profile, see below |
 | `incus` | off | Discovery of Incus containers, see below |
-| `upstreams` | `[]` | Upstream groups |
-| `sites` | `[]` | Sites with their locations |
+| `backends` | `[]` | Named backends with their servers |
+| `domains` | `[]` | Domains with their names and routes |
 | `webhooks` | `[]` | Webhook targets |
 | `limits` | see below | Timeouts and sizes |
 | `retention` | see below | How long data is kept |
@@ -64,7 +64,7 @@ picked up as well. Every change is checked completely and applied while running:
 |---|---|---|
 | `host` | `"127.0.0.1"` | Address of the admin UI. With `0.0.0.0` or `::` the local address counts as loopback. If the address cannot be bound at start, Kovexy does not start (exit code 78). A later change that cannot be bound keeps the old address |
 | `port` | `8000` | Port, must not be 80 or 443 |
-| `publicUrl` | empty | Address in the browser when the admin UI is reached through a site, e.g. `https://proxy.example.com`. The only `Origin` accepted besides the local address |
+| `publicUrl` | empty | Address in the browser when the admin UI is reached through a domain, e.g. `https://proxy.example.com`. The only `Origin` accepted besides the local address |
 | `loginMode` | `"password"` | `"password"`, `"oidc"` or `"both"` (OIDC first, then the password). OIDC needs `oidc` and `publicUrl`, `both` also a password |
 | `passwordHash` | empty | Argon2id hash. Empty on the first start, Kovexy then creates a password and prints it once to the log |
 | `oidc` | empty | `issuer`, `clientId`, `clientSecret`, `allowedSubjects` (empty: everybody the provider lets through), `forceReauth` (default `true`), `scopes` (default `["openid", "profile"]`), like Dirl. Callback URL: `<publicUrl>/auth/callback` |
@@ -83,7 +83,7 @@ Host and port can change while running, the admin connector moves at once.
 
 Using ACME means agreeing to the terms of service of the CA, like with Caddy.
 
-### `upstreams[]`
+### `backends[]`
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -99,35 +99,35 @@ Using ACME means agreeing to the terms of service of the CA, like with Caddy.
 | `healthCheck.timeout` | `"5s"` | |
 | `healthCheck.expectStatus` | `200` | |
 
-### `sites[]` and `locations[]`
+### `domains[]` and `routes[]`
 
 | Field | Default | Meaning |
 |---|---|---|
-| `domains` | required | Exact lower case names, no wildcards. A domain may belong to one site only. Sites are reachable over HTTPS only, port 80 answers every request except ACME challenges with `308` to HTTPS (there is no per-site switch) |
-| `access` | empty | Name of an access profile for the whole site |
+| `names` | required | Exact lower case domain names, no wildcards. A name may belong to one domain only. Domains are reachable over HTTPS only, port 80 answers every request except ACME challenges with `308` to HTTPS (there is no per-domain switch) |
+| `access` | empty | Name of an access profile for the whole domain |
 | `enabled` | `true` | |
 | `accessLog` | `true` | Writes requests to the access log. Statistics count them anyway |
-| `locations[].path` | required | Starts with `/`. A prefix path has no trailing slash |
-| `locations[].match` | `"prefix"` | `"prefix"` or `"exact"` |
-| `locations[].stripPrefix` | `false` | Only for upstream targets |
-| `locations[].target` | required | See below |
-| `locations[].requestHeaders` | `[]` | `{ "action": "set" \| "add" \| "remove", "name": "...", "value": "..." }` |
-| `locations[].responseHeaders` | `[]` | Same format |
-| `locations[].access` | empty | Access profile that replaces the one of the site completely |
-| `locations[].enabled` | `true` | |
+| `routes[].path` | required | Starts with `/`. A prefix path has no trailing slash |
+| `routes[].match` | `"prefix"` | `"prefix"` or `"exact"` |
+| `routes[].stripPrefix` | `false` | Only for backend targets |
+| `routes[].target` | required | See below |
+| `routes[].requestHeaders` | `[]` | `{ "action": "set" \| "add" \| "remove", "name": "...", "value": "..." }` |
+| `routes[].responseHeaders` | `[]` | Same format |
+| `routes[].access` | empty | Access profile that replaces the one of the domain completely |
+| `routes[].enabled` | `true` | |
 
 `target` is one of:
 
 | `type` | Fields |
 |---|---|
-| `"upstream"` | `upstream` |
+| `"backend"` | `backend` |
 | `"static"` | `root` (absolute or relative to the data directory), `directoryListing` (default `false`). Hidden files (starting with a dot) are never served, except `.well-known` |
 | `"redirect"` | `url`, `status` (`307` default or `301`), `keepPath` (default `true`) |
 | `"deny"` | `status` (default `404`), `html` (optional own page) |
 
-### `defaultSite`
+### `fallback`
 
-`{ "type": "static" | "upstream" | "redirect" | "notFound" | "noResponse", ... }` with the same fields as the
+`{ "type": "static" | "backend" | "redirect" | "notFound" | "noResponse", ... }` with the same fields as the
 targets. `static` with an empty `root` serves `<dataDir>/www`, where Kovexy puts a neutral page on the first start.
 A redirect to the requested domain itself is answered with 500, it would loop. `noResponse` answers with an empty
 `204` and closes the connection.
@@ -139,8 +139,8 @@ A redirect to the requested domain itself is answered with 500, it would loop. `
 | `name` | required | Unique |
 | `url` | required | Target of the `POST` |
 | `headers` | `{}` | E.g. `X-API-Key` for KNot. Without `Content-Type` Kovexy sends `application/json` |
-| `template` | every placeholder as JSON | Placeholders `{{event}}`, `{{subject}}`, `{{body}}`, `{{time}}`, `{{site}}`, escaped for JSON strings |
-| `events` | all | `certIssued`, `certFailed`, `upstreamDown`, `upstreamUp`, `ipBanned`, `adminLoginFailed`, `configChanged`, `configInvalid`, `incusDetected`, `incusApproved`, `incusRemoved` |
+| `template` | every placeholder as JSON | Placeholders `{{event}}`, `{{subject}}`, `{{body}}`, `{{time}}`, `{{domain}}`, escaped for JSON strings |
+| `events` | all | `certIssued`, `certFailed`, `backendDown`, `backendUp`, `ipBanned`, `adminLoginFailed`, `configChanged`, `configInvalid`, `incusDetected`, `incusApproved`, `incusRemoved` |
 | `bundleWindow` | `"60s"` | `ipBanned` and `adminLoginFailed` are sent at once the first time, further ones within the window as one message at its end |
 
 Delivery is tried three times, with 1 and 3 seconds in between.
@@ -149,16 +149,16 @@ Delivery is tried three times, with 1 and 3 seconds in between.
 
 | Field | Default | Source |
 |---|---|---|
-| `upstreamConnectTimeout` | `"3s"` | Caddy |
-| `upstreamKeepAlive` | `"2m"` | Caddy |
+| `backendConnectTimeout` | `"3s"` | Caddy |
+| `backendKeepAlive` | `"2m"` | Caddy |
 | `clientIdleTimeout` | `"5m"` | Caddy |
 | `maxRequestHeaderBytes` | `16384` | Caddy |
 | `maxConnections` | `10000` | Open connections on the proxy ports in total, `0` is unlimited. More are closed at once. 10000 idle TLS connections took about 90 MB of heap in a test |
 | `maxConnectionsPerAddress` | `256` | Open connections on the proxy ports of one address, IPv6 per /64, `0` is unlimited. Loopback and `trustedProxies` are not limited |
 | `maxAcceptsPerSecond` | `0` (off) | New connections per second on the proxy ports. Shared by everybody, so off by default |
 
-Not limited: waiting for the response headers of an upstream, the request body, the lifetime of an active WebSocket.
-WebSocket frames are limited to 1 MiB from visitors and 16 MiB from upstreams. At most 128 WebSockets are open at
+Not limited: waiting for the response headers of a backend, the request body, the lifetime of an active WebSocket.
+WebSocket frames are limited to 1 MiB from visitors and 16 MiB from backends. At most 128 WebSockets are open at
 once, 16 per visitor address, more get 503.
 A WebSocket without any traffic for 60 minutes is closed. Jetty
 has no separate timeout for reading the request headers, `clientIdleTimeout` covers a client that stops sending them.
@@ -177,7 +177,7 @@ Daily statistics are kept forever, like Zoraxy. The daily top lists of IP addres
 
 ### `accessProfiles[]`
 
-A site or location uses a profile by name, a location with its own profile replaces the one of the site completely.
+A domain or route uses a profile by name, a route with its own profile replaces the one of the domain completely.
 The checks run in this order (Zoraxy): block lists, allow lists, exploit filter and trap paths, rate limit, allowed
 methods, captcha, Basic Auth. A refused visitor sees a neutral page, the reason goes to the access log and the security events.
 
@@ -186,14 +186,14 @@ methods, captcha, Basic Auth. A refused visitor sees a neutral page, the reason 
 | `name` | required | Unique |
 | `denyIps` | `[]` | IPs and CIDR ranges that get 403 |
 | `denyCountries` | `[]` | ISO 3166 codes that get 403, only when the country of the IP is known |
-| `allowIps` | `[]` | If this or `allowCountries` is filled, only matching visitors get in. An address listed here is never banned by a trap path, and a ban does not stop it on a site and location that use this profile |
+| `allowIps` | `[]` | If this or `allowCountries` is filled, only matching visitors get in. An address listed here is never banned by a trap path, and a ban does not stop it on a domain and route that use this profile |
 | `allowCountries` | `[]` | Like `allowIps`. An IP whose country is unknown gets in when only countries are listed |
 | `allowLocal` | `false` | Private and loopback addresses get in despite the allow lists |
 | `exploitFilter.commonExploits` | `false` | Patterns of Nginx Proxy Manager against query and user agent |
 | `exploitFilter.aiBots` | `false` | AI crawlers by user agent (list of ai.robots.txt) |
 | `exploitFilter.response` | `"forbidden"` | `"forbidden"` (403), `"notFound"` (404), `"badRequest"` (400), `"drop"` (empty 204, connection closed). There is no captcha answer on purpose: a crawler could solve it |
-| `trapPaths.enabled` | `false` | Bans whoever calls a trap path, for all sites. A request a browser sends for another site is only refused, and so is one from an address in `allowIps` of the profile |
-| `trapPaths.paths` | 15 typical scanner targets | Path prefixes. A location with `match: "exact"` for exactly that path disarms the trap |
+| `trapPaths.enabled` | `false` | Bans whoever calls a trap path, for all domains. A request a browser sends for another site is only refused, and so is one from an address in `allowIps` of the profile |
+| `trapPaths.paths` | 15 typical scanner targets | Path prefixes. A route with `match: "exact"` for exactly that path disarms the trap |
 | `trapPaths.banDuration` | `"1h"` | IPv6 addresses are banned per /64 |
 | `rateLimit.requestsPerSecond` | required if set | Per IP and profile in fixed one second windows, more get 429 |
 | `rateLimit.ipv6Prefix` | `64` | IPv6 addresses count per prefix |
@@ -209,7 +209,7 @@ methods, captcha, Basic Auth. A refused visitor sees a neutral page, the reason 
 | `captcha.recaptchaScore` | `0.5` | Lowest v3 score that passes |
 
 After a successful Basic Auth login Kovexy removes the `Authorization` header, the password never reaches the
-upstream.
+backend.
 
 #### AI crawler list
 
@@ -226,8 +226,8 @@ empty and have at most 200 characters, 1000 entries in all. The Access page edit
 
 #### Captcha
 
-The captcha works because every site is reachable over HTTPS only (its cookie is `Secure`). The rate limit of the profile also counts requests to Kovexy's own paths
-under `/.kovexy/`. That path belongs to Kovexy on every domain and never reaches an upstream.
+The captcha works because every domain is reachable over HTTPS only (its cookie is `Secure`). The rate limit of the profile also counts requests to Kovexy's own paths
+under `/.kovexy/`. That path belongs to Kovexy on every domain and never reaches a backend.
 
 The captcha is Google reCAPTCHA, Kovexy has no captcha of its own. A visitor without a valid captcha cookie sees a
 neutral check page with 403 (like Zoraxy). It posts to `/.kovexy/captcha/verify` on the same domain and goes back to
@@ -240,7 +240,7 @@ Visitors cannot name a user towards an app either: `X-Forwarded-User`, `X-Forwar
 
 ### `incus`
 
-Kovexy finds Incus containers that ask for a route and puts them live after a click in the admin UI (page Incus),
+Kovexy finds Incus containers that ask for a domain and puts them live after a click in the admin UI (page Incus),
 never on its own. It only reads, through the Incus socket, which gives root access to the host: with `enabled` the
 service must run as root, otherwise the config is rejected (exit code 78 at the start).
 
@@ -267,11 +267,11 @@ incus config set web1 user.kovexy.domains=app.example.com user.kovexy.port=8080
 
 Approvals and rejections live in the database, not in `kovexy.json`. An approval counts for exactly the approved
 domains, address, port, HTTPS and access profile, a change of any of them needs a new click. Loopback, link-local
-and the host's own addresses are refused as targets. Only running instances with an address get a route, a stopped one loses it at
-once and gets it back when it starts. A site set up by hand wins over a container with the same domain. Kovexy listens
+and the host's own addresses are refused as targets. Only running instances with an address get a domain, a stopped one loses it at
+once and gets it back when it starts. A domain set up by hand wins over a container with the same name. Kovexy listens
 to the Incus events and fetches the list again after every instance event and after every reconnect (every 10 s
-while Incus is away). An approved container gets a site (HTTPS only, port 80 redirects) and an upstream
-group named `incus:<project>/<instance>`, that prefix is reserved.
+while Incus is away). An approved container gets a domain (HTTPS only, port 80 redirects) and a backend
+backend named `incus:<project>/<instance>`, that prefix is reserved.
 
 ### Country data
 

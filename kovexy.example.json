@@ -26,7 +26,7 @@
     "email": "admin@example.com"
   },
   "trustedProxies": [],
-  "defaultSite": {
+  "fallback": {
     "type": "static",
     "root": "",
     "directoryListing": false
@@ -84,7 +84,7 @@
       }
     }
   ],
-  "upstreams": [
+  "backends": [
     {
       "name": "app",
       "servers": [
@@ -124,18 +124,18 @@
       ]
     }
   ],
-  "sites": [
+  "domains": [
     {
-      "domains": [
+      "names": [
         "example.com",
         "www.example.com"
       ],
-      "locations": [
+      "routes": [
         {
           "path": "/",
           "target": {
-            "type": "upstream",
-            "upstream": "app"
+            "type": "backend",
+            "backend": "app"
           },
           "responseHeaders": [
             {
@@ -159,8 +159,8 @@
           "path": "/api",
           "stripPrefix": true,
           "target": {
-            "type": "upstream",
-            "upstream": "app"
+            "type": "backend",
+            "backend": "app"
           },
           "requestHeaders": [
             {
@@ -209,30 +209,30 @@
       "access": "public"
     },
     {
-      "domains": [
+      "names": [
         "proxy.example.com"
       ],
-      "locations": [
+      "routes": [
         {
           "path": "/",
           "target": {
-            "type": "upstream",
-            "upstream": "kovexy-admin"
+            "type": "backend",
+            "backend": "kovexy-admin"
           }
         }
       ],
       "access": "home-only"
     },
     {
-      "domains": [
+      "names": [
         "nas.example.com"
       ],
-      "locations": [
+      "routes": [
         {
           "path": "/",
           "target": {
-            "type": "upstream",
-            "upstream": "nas"
+            "type": "backend",
+            "backend": "nas"
           }
         }
       ],
@@ -250,8 +250,8 @@
       "events": [
         "certIssued",
         "certFailed",
-        "upstreamDown",
-        "upstreamUp",
+        "backendDown",
+        "backendUp",
         "ipBanned",
         "adminLoginFailed",
         "configChanged",
@@ -261,8 +261,8 @@
     }
   ],
   "limits": {
-    "upstreamConnectTimeout": "3s",
-    "upstreamKeepAlive": "2m",
+    "backendConnectTimeout": "3s",
+    "backendKeepAlive": "2m",
     "clientIdleTimeout": "5m",
     "maxRequestHeaderBytes": 16384,
     "maxConnections": 10000,

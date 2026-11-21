@@ -56,7 +56,7 @@ val MAX_RETRY_DURATION = 30.days
  * @property failingSince Unix milliseconds of the first failure in a row.
  * @property nextAttempt Unix milliseconds of the next attempt after a failure.
  * @property gaveUp Retried for [MAX_RETRY_DURATION] without success, no further attempts.
- * @property wanted Whether a site still uses the domain. Unused certificates are kept but not renewed.
+ * @property wanted Whether a domain still uses the domain. Unused certificates are kept but not renewed.
  */
 data class CertificateStatus(
     val domain: String,
@@ -116,7 +116,7 @@ class CertificateManager(
     }
 
     /**
-     * Sets the domains that need a certificate (every domain of an enabled site on the TLS listener) and checks them
+     * Sets the domains that need a certificate (every domain of an enabled domain on the TLS listener) and checks them
      * soon. A domain that is wanted again starts with a fresh retry budget.
      */
     fun setWanted(domains: Set<String>) {
@@ -178,7 +178,7 @@ class CertificateManager(
             keyManager.remove(domain)
             store.delete(domain)
             failures.remove(domain)
-            staticLog(KLogger.Level.INFO, TAG) { "Removed the expired certificate of $domain, no site uses it any more" }
+            staticLog(KLogger.Level.INFO, TAG) { "Removed the expired certificate of $domain, no domain uses it any more" }
             onRemoved(domain)
         }
     }
@@ -215,7 +215,7 @@ class CertificateManager(
                     WebhookEvent.CERT_ISSUED,
                     "Certificate for $domain issued",
                     "The certificate for $domain is valid until ${formatTimestamp(bundle.leaf.notAfter.time)}.",
-                    site = domain,
+                    domain = domain,
                     time = clock(),
                 )
             )
@@ -238,7 +238,7 @@ class CertificateManager(
                 WebhookEvent.CERT_FAILED,
                 "Certificate for $domain failed",
                 "Attempt $count failed: $message\n$next",
-                site = domain,
+                domain = domain,
                 time = now,
             )
         )

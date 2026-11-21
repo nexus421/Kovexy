@@ -52,7 +52,7 @@ class AdminWebTest {
     @Test
     fun guardsAndHeaders(): Unit = run {
         assertEquals(302, get("/").status)
-        assertEquals("/login", get("/sites").header("Location"))
+        assertEquals("/login", get("/domains").header("Location"))
         assertEquals(200, get("/healthz").status)
         assertEquals(200, get("/static/app.css").status)
         val login = get("/login")
@@ -62,7 +62,7 @@ class AdminWebTest {
         assertTrue(login.text.contains("protected by a password only"), "The warning shows on the login page")
         assertEquals(403, post("/login", form("password" to password), origin = null).status, "Posts need an allowed Origin")
         assertEquals(403, post("/login", form("password" to password), origin = "https://evil.test").status)
-        assertEquals(401, post("/sites/new", form()).status, "Posts need a session")
+        assertEquals(401, post("/domains/new", form()).status, "Posts need a session")
     }
 
     @Test
@@ -84,32 +84,32 @@ class AdminWebTest {
     fun savingThroughFormsAppliesAndDetectsConflicts(): Unit = run {
         val cookie = login()
         val version = harness.store.current.version
-        val created = post("/upstreams/new", form(
+        val created = post("/backends/new", form(
             "version" to version, "name" to "app", "serverCount" to "1", "s0.address" to "127.0.0.1:9", "s0.weight" to "1", "s0.max" to "0",
             "healthPath" to "", "expectStatus" to "200", "interval" to "30s", "timeout" to "5s",
         ), cookie)
         assertEquals(302, created.status, created.text)
-        assertEquals("app", harness.kovexy.config.upstreams.single().name)
+        assertEquals("app", harness.kovexy.config.backends.single().name)
 
-        val stale = post("/sites/new", form("version" to version, "domains" to "a.test", "enabled" to "on"), cookie)
+        val stale = post("/domains/new", form("version" to version, "names" to "a.test", "enabled" to "on"), cookie)
         assertEquals(400, stale.status)
         assertTrue(stale.text.contains("changed since this page was loaded"))
 
-        val invalid = post("/sites/new", form("version" to harness.store.current.version, "domains" to "*.test"), cookie)
+        val invalid = post("/domains/new", form("version" to harness.store.current.version, "names" to "*.test"), cookie)
         assertEquals(400, invalid.status)
         assertTrue(invalid.text.contains("without wildcard"))
 
-        val site = post("/sites/new", form("version" to harness.store.current.version, "domains" to "a.test\nb.test", "enabled" to "on", "rootUpstream" to "app"), cookie)
-        assertEquals(302, site.status)
-        assertEquals(listOf("a.test", "b.test"), harness.kovexy.config.sites.single().domains)
-        assertEquals(502, harness.https("a.test").status, "The new site works at once (its upstream is down)")
+        val domain = post("/domains/new", form("version" to harness.store.current.version, "names" to "a.test\nb.test", "enabled" to "on", "rootBackend" to "app"), cookie)
+        assertEquals(302, domain.status)
+        assertEquals(listOf("a.test", "b.test"), harness.kovexy.config.domains.single().names)
+        assertEquals(502, harness.https("a.test").status, "The new domain works at once (its backend is down)")
         assertTrue(harness.store.backupDir.listFiles()!!.isNotEmpty(), "Every save keeps a copy of the previous file")
     }
 
     @Test
     fun backupRoundTrip(): Unit = runBlocking {
         val cookie = login()
-        post("/upstreams/new", form(
+        post("/backends/new", form(
             "version" to harness.store.current.version, "name" to "keep", "serverCount" to "1", "s0.address" to "127.0.0.1:9", "s0.weight" to "1",
             "s0.max" to "0", "expectStatus" to "200", "interval" to "30s", "timeout" to "5s",
         ), cookie)
@@ -121,11 +121,11 @@ class AdminWebTest {
         assertEquals("application/zip", download.header("Content-Type"))
         val zip = download.body
 
-        harness.kovexy.configStore.update { it.copy(upstreams = emptyList()) }
-        assertNull(harness.kovexy.upstreams.group("keep"))
+        harness.kovexy.configStore.update { it.copy(backends = emptyList()) }
+        assertNull(harness.kovexy.backends.group("keep"))
         assertTrue(harness.kovexy.bans.lift("203.0.113.9"))
         assertNull(harness.kovexy.restoreBackup(zip.toTempFile()))
-        assertNotNull(harness.kovexy.upstreams.group("keep"), "Restored and applied")
+        assertNotNull(harness.kovexy.backends.group("keep"), "Restored and applied")
         assertNotNull(harness.kovexy.bans.banOf(java.net.InetAddress.getByName("203.0.113.9")), "Bans of the restored database are enforced at once")
         assertTrue(harness.store.backupDir.listFiles()!!.any { it.name.startsWith("restore-") })
         // The backup holds the session of this login, a restore must not bring sessions back (audit run-2)

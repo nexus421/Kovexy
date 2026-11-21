@@ -2,7 +2,7 @@
 // Loaded as a file because the CSP forbids inline scripts.
 'use strict';
 (function () {
-  // Confirmation before destructive actions: <form data-confirm="Delete this site?">
+  // Confirmation before destructive actions: <form data-confirm="Delete this domain?">
   document.addEventListener('submit', function (event) {
     const form = event.target;
     if (form.dataset && form.dataset.confirm && !window.confirm(form.dataset.confirm)) event.preventDefault();

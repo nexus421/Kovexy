@@ -15,7 +15,7 @@ val HOP_BY_HOP_HEADERS: Set<String> = setOf(
     "transfer-encoding", "upgrade",
 )
 
-/** The headers Kovexy sets itself towards the upstream. */
+/** The headers Kovexy sets itself towards the backend. */
 const val X_FORWARDED_FOR = "X-Forwarded-For"
 const val X_FORWARDED_PROTO = "X-Forwarded-Proto"
 const val X_FORWARDED_HOST = "X-Forwarded-Host"
@@ -72,7 +72,7 @@ class HeaderList(entries: List<Pair<String, String>> = emptyList()) {
         }
     }
 
-    /** Applies the rules of a location in order. */
+    /** Applies the rules of a route in order. */
     fun apply(rules: List<HeaderRule>) {
         rules.forEach { rule ->
             when (rule.action) {

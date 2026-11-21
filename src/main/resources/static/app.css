@@ -392,7 +392,7 @@ legend { padding: 0 6px; color: var(--muted); font-weight: 600; font-size: 13px;
 .problems { margin: 0; padding-left: 20px; }
 /* Only the fields of the chosen target type, without JavaScript */
 .target-fields { display: none; }
-form:has(select[name=targetType] option[value=upstream]:checked) .target-upstream,
+form:has(select[name=targetType] option[value=backend]:checked) .target-backend,
 form:has(select[name=targetType] option[value=static]:checked) .target-static,
 form:has(select[name=targetType] option[value=redirect]:checked) .target-redirect,
 form:has(select[name=targetType] option[value=deny]:checked) .target-deny { display: grid; }

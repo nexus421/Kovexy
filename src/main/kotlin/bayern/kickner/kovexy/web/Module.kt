@@ -84,9 +84,9 @@ fun Application.kovexyModule(kovexy: Kovexy) {
         get("/healthz") { call.respondText("ok") }
         authRoutes(kovexy)
         statusRoutes(kovexy)
-        siteRoutes(kovexy)
-        upstreamRoutes(kovexy)
-        defaultSiteRoutes(kovexy)
+        domainRoutes(kovexy)
+        backendRoutes(kovexy)
+        fallbackRoutes(kovexy)
         certificateRoutes(kovexy)
         statisticsRoutes(kovexy)
         accessLogRoutes(kovexy)

@@ -3,7 +3,7 @@ package bayern.kickner.kovexy.web
 import bayern.kickner.kovexy.Kovexy
 import bayern.kickner.kovexy.formatTimestamp
 import bayern.kickner.kovexy.stats.AccessLogTable
-import bayern.kickner.kovexy.stats.DEFAULT_SITE_KEY
+import bayern.kickner.kovexy.stats.FALLBACK_KEY
 import bayern.kickner.kovexy.stats.statistics
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -38,7 +38,7 @@ private val EXPIRY_WARNING = 14.days
 fun Route.statusRoutes(kovexy: Kovexy) {
     get("/") {
         call.page("Status", call.session, Nav.STATUS, htmx = true) {
-            pageHeader("Status", "Overview of sites, upstreams and certificates. Updates every ${LIVE_INTERVAL.inWholeSeconds} seconds.")
+            pageHeader("Status", "Overview of domains, backends and certificates. Updates every ${LIVE_INTERVAL.inWholeSeconds} seconds.")
             div {
                 attributes["hx-ext"] = "sse"
                 attributes["sse-connect"] = "/status/events"
@@ -69,13 +69,13 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
     val todayRows = kovexy.storage.statistics(hourly = false, from = today)
     val requestsToday = todayRows.sumOf { it.requests }
     val errorsToday = todayRows.sumOf { it.status5xx }
-    val servers = kovexy.upstreams.all().flatMap { it.servers }
+    val servers = kovexy.backends.all().flatMap { it.servers }
     val certs = kovexy.certificates.status().filter { it.wanted }
     val certProblems = certs.count { it.lastError != null || it.notAfter == null || it.notAfter - now < EXPIRY_WARNING.inWholeMilliseconds }
 
     div("stats-grid") {
-        stat("${config.sites.count { it.enabled }} / ${config.sites.size}", "Sites enabled")
-        stat("${servers.count { it.healthy }} / ${servers.size}", "Upstream servers up")
+        stat("${config.domains.count { it.enabled }} / ${config.domains.size}", "Domains enabled")
+        stat("${servers.count { it.healthy }} / ${servers.size}", "Backend servers up")
         stat("${certs.size - certProblems} / ${certs.size}", "Certificates fine")
         stat(requestsToday.toString(), "Requests today")
         stat(errorsToday.toString(), "5xx answers today")
@@ -83,18 +83,18 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
     }
 
     div("columns gap-top") {
-        card("Upstreams") {
-            val groups = kovexy.upstreams.all()
-            if (groups.isEmpty()) p("muted") { +"No upstream groups yet." }
+        card("Backends") {
+            val groups = kovexy.backends.all()
+            if (groups.isEmpty()) p("muted") { +"No backends yet." }
             else div("table-wrap") {
                 table("stack-mobile") {
-                    thead { tr { th { +"Server" }; th { +"Group" }; th { +"State" }; th(classes = "num") { +"Active" } } }
+                    thead { tr { th { +"Server" }; th { +"Backend" }; th { +"State" }; th(classes = "num") { +"Active" } } }
                     tbody {
                         groups.forEach { group ->
                             group.servers.forEach { server ->
                                 tr {
                                     td { attributes["data-label"] = "Server"; +server.address.toString() }
-                                    td { attributes["data-label"] = "Group"; a(href = "/upstreams/${urlPart(group.config.name)}") { +group.config.name } }
+                                    td { attributes["data-label"] = "Backend"; a(href = "/backends/${urlPart(group.config.name)}") { +group.config.name } }
                                     td {
                                         attributes["data-label"] = "State"
                                         if (server.healthy) pill("ok", "up") else pill("error", "down")
@@ -109,7 +109,7 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
             }
         }
         card("Certificates") {
-            if (certs.isEmpty()) p("muted") { +"No site on the TLS listener yet." }
+            if (certs.isEmpty()) p("muted") { +"No domain yet." }
             else div("table-wrap") {
                 table("stack-mobile") {
                     thead { tr { th { +"Domain" }; th { +"State" }; th { +"Valid until" } } }
@@ -134,7 +134,7 @@ private fun FlowContent.statusContent(kovexy: Kovexy) {
         val latest = kovexy.storage.tx {
             AccessLogTable.selectAll().where { AccessLogTable.status greaterEq 500 }
                 .orderBy(AccessLogTable.id, SortOrder.DESC).limit(8)
-                .map { Triple(it[AccessLogTable.time], "${it[AccessLogTable.status]} ${it[AccessLogTable.method]} ${it[AccessLogTable.domain]}${it[AccessLogTable.path]}", it[AccessLogTable.reason]) }
+                .map { Triple(it[AccessLogTable.time], "${it[AccessLogTable.status]} ${it[AccessLogTable.method]} ${it[AccessLogTable.host]}${it[AccessLogTable.path]}", it[AccessLogTable.reason]) }
         }
         if (latest.isEmpty()) p("muted") { +"No 5xx answers in the access log." }
         else div("table-wrap") {
@@ -173,7 +173,7 @@ fun FlowContent.certificatePill(cert: bayern.kickner.kovexy.tls.CertificateStatu
 }
 
 /** Display name of a statistics site key. */
-fun siteLabel(key: String): String = if (key == DEFAULT_SITE_KEY) "Default site" else key
+fun domainLabel(key: String): String = if (key == FALLBACK_KEY) "Fallback" else key
 
 /** Encodes a name for a URL path segment. */
 fun urlPart(name: String): String = java.net.URLEncoder.encode(name, Charsets.UTF_8).replace("+", "%20")

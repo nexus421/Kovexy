@@ -41,8 +41,8 @@ class PebbleAcmeTest {
         SSLContext.setDefault(trustAllContext)
 
         val harness = Harness(
-            """{ "admin": { "port": ADMIN_PORT }, "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] } ],
-                "sites": [ { "domains": ["$domain"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ] }"""
+            """{ "admin": { "port": ADMIN_PORT }, "backends": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] } ],
+                "domains": [ { "names": ["$domain"], "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] } ] }"""
         )
         val acmePort = freePort()
         File(work, "pebble.json").writeText(

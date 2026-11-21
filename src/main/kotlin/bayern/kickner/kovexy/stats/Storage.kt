@@ -14,6 +14,11 @@ import java.nio.file.StandardCopyOption
 import java.sql.Connection
 import java.sql.DriverManager
 
+/*
+ * Column names of earlier versions are kept so an existing database keeps working: `site` holds the first name of the
+ * domain entry, `domain` in `access_log` the requested host, `location` the route and `upstream` the backend.
+ */
+
 /** Name of the database file in the data directory. */
 const val DATABASE_FILE_NAME = "kovexy.db"
 
@@ -23,15 +28,15 @@ object AccessLogTable : Table("access_log") {
     val time = long("time").index()
     val clientIp = varchar("client_ip", 64)
     val method = varchar("method", 16)
-    val domain = varchar("domain", 253)
+    val host = varchar("domain", 253)
     val path = varchar("path", 2048)
     val status = integer("status")
     val bytesIn = long("bytes_in")
     val bytesOut = long("bytes_out")
     val durationMs = long("duration_ms")
-    val site = varchar("site", 253).index()
-    val location = varchar("location", 512)
-    val upstream = varchar("upstream", 300)
+    val domain = varchar("site", 253).index()
+    val route = varchar("location", 512)
+    val backend = varchar("upstream", 300)
     val userAgent = varchar("user_agent", 512)
     val reason = varchar("reason", 200)
     override val primaryKey = PrimaryKey(id)
@@ -39,7 +44,7 @@ object AccessLogTable : Table("access_log") {
 
 /** Columns shared by the hourly and the daily statistics. */
 abstract class StatsTable(name: String) : Table(name) {
-    val site = varchar("site", 253)
+    val domain = varchar("site", 253)
     val bucket = long("bucket")
     val requests = long("requests")
     val status2xx = long("status_2xx")
@@ -50,13 +55,13 @@ abstract class StatsTable(name: String) : Table(name) {
     val bytesOut = long("bytes_out")
     val durationSum = long("duration_sum_ms")
     val durationMax = long("duration_max_ms")
-    override val primaryKey = PrimaryKey(site, bucket)
+    override val primaryKey = PrimaryKey(domain, bucket)
 }
 
-/** Statistics per site and hour. `bucket` is the start of the hour in Unix milliseconds. */
+/** Statistics per domain and hour. `bucket` is the start of the hour in Unix milliseconds. */
 object StatsHourlyTable : StatsTable("stats_hourly")
 
-/** Statistics per site and day. `bucket` is the start of the day in the host's time zone, Unix milliseconds. */
+/** Statistics per domain and day. `bucket` is the start of the day in the host's time zone, Unix milliseconds. */
 object StatsDailyTable : StatsTable("stats_daily")
 
 /** Admin sessions. Only the SHA-256 of the token is stored, a copy of the database opens no session. */
@@ -76,7 +81,7 @@ object SessionTable : Table("sessions") {
 object BanTable : Table("bans") {
     val key = varchar("key", 64)
     val reason = varchar("reason", 300)
-    val site = varchar("site", 253)
+    val domain = varchar("site", 253)
     val createdAt = long("created_at")
     val expiresAt = long("expires_at").index()
     override val primaryKey = PrimaryKey(key)
@@ -101,7 +106,7 @@ object SecurityEventTable : Table("security_events") {
     val time = long("time").index()
     val type = varchar("type", 40)
     val ip = varchar("ip", 64)
-    val site = varchar("site", 253)
+    val domain = varchar("site", 253)
     val detail = varchar("detail", 500)
     override val primaryKey = PrimaryKey(id)
 }
@@ -118,22 +123,22 @@ object IncusDecisionTable : Table("incus_decisions") {
     override val primaryKey = PrimaryKey(project, instance)
 }
 
-/** Daily top lists per site (Zoraxy `DailySummary`), at most 100 keys per list and day. */
+/** Daily top lists per domain (Zoraxy `DailySummary`), at most 100 keys per list and day. */
 object StatsTopTable : Table("stats_top") {
-    val site = varchar("site", 253)
+    val domain = varchar("site", 253)
     val day = long("day")
     val kind = varchar("kind", 20)
     val key = varchar("key", 512)
     val count = long("count")
-    override val primaryKey = PrimaryKey(site, day, kind, key)
+    override val primaryKey = PrimaryKey(domain, day, kind, key)
 }
 
-/** Response time histogram per site and hour, counts per bucket as comma separated text. */
+/** Response time histogram per domain and hour, counts per bucket as comma separated text. */
 object LatencyTable : Table("stats_latency") {
-    val site = varchar("site", 253)
+    val domain = varchar("site", 253)
     val bucket = long("bucket")
     val histogram = varchar("histogram", 1000)
-    override val primaryKey = PrimaryKey(site, bucket)
+    override val primaryKey = PrimaryKey(domain, bucket)
 }
 
 /** Every table, created on start. */

@@ -53,40 +53,40 @@
   `Transfer-Encoding`, `Upgrade`) are never forwarded.
 - Rules match the decoded and cleaned path, so encodings, dot segments and path parameters (`/admin;x`) cannot slip
   past a block. A path with an invalid encoding or NUL gets 400. Jetty refuses ambiguous paths such as empty segments
-  (`//admin`) with 400. When `stripPrefix` cannot use the raw path, the cleaned path is encoded again, so an upstream
+  (`//admin`) with 400. When `stripPrefix` cannot use the raw path, the cleaned path is encoded again, so a backend
   never decodes twice.
 - A profile that cannot read the visitor's address refuses the request instead of skipping its checks.
 - Static files never leave their root, also not through symbolic links, the index file of a directory included. Hidden files and directories (`.git`, `.env`)
   are never served or listed, only `.well-known` is. Directory listings are off by default.
-- WebSocket frames from visitors are relayed up to 1 MiB, frames from upstreams up to 16 MiB, a bigger frame closes
+- WebSocket frames from visitors are relayed up to 1 MiB, frames from backends up to 16 MiB, a bigger frame closes
   the connection. The reader reserves a whole frame as soon as its header arrives, so at most 128 WebSockets are open
   in total and 16 per visitor address (IPv6 per /56), one more gets 503. The place is taken before the handshake, so
   parallel handshakes cannot get past the limit. A browser sends each message as one frame, an app that sends more
   than 1 MiB per message from the browser does not work behind Kovexy. The relay waits until each frame is written,
   so a side that stops reading slows the other side down instead of filling the memory.
-- HTTPS or nothing: port 80 answers ACME challenges and otherwise only redirects (`308`), no site and not the default
-  site is ever served over plain HTTP. `Location` is only built from a valid domain name or IP address in `Host`, anything
+- HTTPS or nothing: port 80 answers ACME challenges and otherwise only redirects (`308`), no domain and not the fallback
+  is ever served over plain HTTP. `Location` is only built from a valid domain name or IP address in `Host`, anything
   else gets 400, so a crafted `Host` cannot turn the redirect into an open redirect.
-- HTTPS upstreams without `skipCertVerify` must present a certificate from a trusted CA that names the configured
+- HTTPS backends without `skipCertVerify` must present a certificate from a trusted CA that names the configured
   address in its subject alternative names: an IP address as IP entry, a name as DNS entry (`*.` for one label). The
   common name does not count. Kovexy checks this itself, Ktor's client checks names too loosely.
-- A refused upstream certificate is logged as warning with the reason, at most every 10 minutes per server.
-- Known limit: Ktor's HTTP client has no limit for the response headers of an upstream. An upstream that sends
-  endless header lines can fill Kovexy's memory and end the process. Upstreams are chosen by the admin and Incus
+- A refused backend certificate is logged as warning with the reason, at most every 10 minutes per server.
+- Known limit: Ktor's HTTP client has no limit for the response headers of a backend. A backend that sends
+  endless header lines can fill Kovexy's memory and end the process. Backends are chosen by the admin and Incus
   containers need an approval, only approve containers whose owner you trust that far (decided on 19.11.2026).
 - Active health checks only read the status, never the body.
-- A ban also cuts responses from upstreams (downloads, server-sent events) the address already receives, like its
+- A ban also cuts responses from backends (downloads, server-sent events) the address already receives, like its
   WebSockets. Static files that are being sent finish.
-- The site is picked by the request's authority, a `Host` header naming another domain gets 400 (HTTP/2 without
-  `:authority` would otherwise reach the default site with the `Host` of a protected one).
+- The domain is picked by the request's authority, a `Host` header naming another domain gets 400 (HTTP/2 without
+  `:authority` would otherwise reach the fallback with the `Host` of a protected one).
 - `X-Forwarded-User`, `-Email`, `-Preferred-Username` and the other headers Kovexy removes are also removed in
   spellings with `_`, `.` or any other character instead of `-`, which CGI style servers read as the same header.
 - The neutral error pages never show internals.
 - Forms are read with a size limit (1 MiB in the admin UI, 16 KiB on proxied domains), a bigger body counts as an
   empty form and is never read into memory as a whole.
 - Paths under `/.kovexy/` are recognized on the cleaned path, `/%2Ekovexy/` is Kovexy's too and never reaches an
-  upstream.
-- Kovexy's own cookie (captcha) is removed from the `Cookie` header before a request goes to an upstream, an app never
+  backend.
+- Kovexy's own cookie (captcha) is removed from the `Cookie` header before a request goes to a backend, an app never
   sees a session it could replay. `X-Forwarded-User`, `-Email` and `-Preferred-Username` from the visitor are always
   removed. Kovexy sets none of them (it has no login in front of apps), so an app that trusts them behind Kovexy is not
   fooled by a visitor.
@@ -127,7 +127,7 @@ turned off under Settings.
   the form `a.*b.*c` are checked as ordered parts in linear time, as a regex they would cost minutes of CPU on a
   crafted 16 KiB query. Patterns with a repeated group are written without it, the group overflowed the stack.
 - A ban also closes the WebSockets the address already has open.
-- Trap paths ban the address (IPv6 per /64) for all sites. Bans are checked before anything else, live in SQLite and
+- Trap paths ban the address (IPv6 per /64) for all domains. Bans are checked before anything else, live in SQLite and
   survive a restart. They expire on their own or are lifted under Security. A request a browser sends for another site
   (`Sec-Fetch-Site` other than `none` and `same-origin`, or a foreign `Origin` or `Referer`, over plain HTTP also a
   browser like `Accept`) is only refused, never banned: otherwise any web page could get its visitors banned with an
@@ -139,12 +139,12 @@ turned off under Settings.
   check. 5 failures from one address lock it out of that profile for 15 minutes,
   other profiles are not affected. At most 4 hash checks run at the same time for all profiles, a request that waits
   longer than 2 seconds for one gets 503 and does not count as a failure. Kovexy's Basic Auth credentials are removed
-  before the request goes to the upstream, also on excepted paths and locations with another profile.
+  before the request goes to the backend, also on excepted paths and routes with another profile.
 - Rate limits count per profile and address in one second windows.
 - Captcha: page tokens are signed with an HMAC key that is new on every start, the return address only takes paths on
   the same host (never `//host` or a URL). Solved captchas are random IDs in memory, valid for one profile on one
   domain, the cookie is `__Host-`, `HttpOnly`, `SameSite=Lax` and `Secure`, the captcha only runs over HTTPS, which is the
-  only way a site is reachable. At most 100.000 solved captchas are kept, the oldest go first. The exploit filter never answers with
+  only way a domain is reachable. At most 100.000 solved captchas are kept, the oldest go first. The exploit filter never answers with
   a captcha, a crawler could solve it. The rate limit of the profile also covers `/.kovexy/`. reCAPTCHA answers are
   checked at Google on the server, at most 2 of one address at a time. A WebSocket that the captcha lets in needs an
   `Origin` of the same domain, a foreign page cannot open it with the visitor's cookies.
@@ -153,9 +153,9 @@ turned off under Settings.
   An approval covers the domains, the address, the port, HTTPS and the access profile shown on the page, a change of
   any of them needs a new click. Loopback, link-local and the host's own addresses are never a target, a guest
   controls the addresses Incus reports for it. A guest cannot set its own keys, `/dev/incus/sock` does not allow it.
-  Removing a route also closes the WebSockets it admitted. Kovexy reads only the configured projects, at most 16 MiB
+  Removing an Incus domain also closes the WebSockets it admitted. Kovexy reads only the configured projects, at most 16 MiB
   per project and 1 MiB per event, users of a project choose what goes into these answers. A container that is not
-  approved cannot take an approved route offline by claiming the same domain, it only gets a warning.
+  approved cannot take an approved domain offline by claiming the same name, it only gets a warning.
 - Connection limits on the proxy ports: `limits.maxConnections` closes connections above the total at once,
   `limits.maxConnectionsPerAddress` (256 by default, IPv6 per /64) those of one address above its share, so a single
   host cannot take all connections. Loopback and `trustedProxies` are not limited per address.
@@ -170,5 +170,5 @@ turned off under Settings.
   rejections and removals. Config changes come with a line diff, every secret
   shows as `***` and a changed secret is only named.
 - Security events record bans, blocked requests by kind, failed Basic Auth and admin logins. Rate limit events are
-  recorded at most once per address, site and minute.
+  recorded at most once per address, domain and minute.
 - Both live in SQLite and are kept 90 days by default.

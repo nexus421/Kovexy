@@ -49,7 +49,7 @@ data class Ports(val http: Int = 80, val https: Int = 443)
  *
  * TLS uses the [DynamicKeyManager] through an own `SSLContext` set on Jetty's `SslContextFactory` via Ktor's hook
  * `configureServer` (variant `jetty-km`). Jetty's SNI host check is off like Caddy's `strict_sni_host`, unknown names
- * get the fallback certificate and the default site.
+ * get the fallback certificate and the fallback.
  *
  * @param ports Proxy ports.
  * @param keyManager Certificates.

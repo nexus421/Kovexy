@@ -39,24 +39,24 @@ private enum class Range(val key: String, val label: String, val hourly: Boolean
     YEAR("365d", "Last 365 days", false, 365),
 }
 
-/** Every site key with statistics plus the configured sites. */
-private fun Kovexy.statsSites(): List<String> = (config.sites.map { it.domains.first() } +
+/** Every site key with statistics plus the configured domains. */
+private fun Kovexy.statsDomains(): List<String> = (config.domains.map { it.names.first() } +
     storage.tx { exec("SELECT DISTINCT site FROM stats_daily") { rs -> buildList { while (rs.next()) add(rs.getString(1)) } } }.orEmpty())
     .distinct().sortedWith(compareBy({ it.isEmpty() }, { it }))
 
-/** Statistics per site and time range, charts as server-side SVG. */
+/** Statistics per domain and time range, charts as server-side SVG. */
 fun Route.statisticsRoutes(kovexy: Kovexy) {
     get("/statistics") {
         val range = Range.entries.firstOrNull { it.key == call.request.queryParameters["range"] } ?: Range.DAY
-        val sites = kovexy.statsSites()
-        val site = call.request.queryParameters["site"]?.takeIf { it in sites }
-        val (buckets, rows) = kovexy.loadRange(range, site)
-        val query = "range=${range.key}" + (site?.let { "&site=${urlPart(it)}" } ?: "")
+        val domains = kovexy.statsDomains()
+        val domain = call.request.queryParameters["domain"]?.takeIf { it in domains }
+        val (buckets, rows) = kovexy.loadRange(range, domain)
+        val query = "range=${range.key}" + (domain?.let { "&domain=${urlPart(it)}" } ?: "")
         call.page("Statistics", call.session, Nav.STATISTICS) {
             pageHeader("Statistics", "Requests, status codes, traffic and response times. Hourly values are kept ${kovexy.config.retention.hourlyStats}, daily values forever.")
             card {
                 form(action = "/statistics", method = FormMethod.get, classes = "filters") {
-                    selectField("Site", "site", site ?: "*", listOf("*" to "All sites") + sites.map { it to siteLabel(it) }, autosubmit = true)
+                    selectField("Domain", "domain", domain ?: "*", listOf("*" to "All domains") + domains.map { it to domainLabel(it) }, autosubmit = true)
                     selectField("Range", "range", range.key, Range.entries.map { it.key to it.label }, autosubmit = true)
                     submit("Show", "")
                 }
@@ -70,7 +70,7 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                 stat(bytes(totals.sumOf { it.bytesIn }), "Received")
                 val requests = totals.sumOf { it.requests }
                 stat(if (requests == 0L) "-" else "${totals.sumOf { it.durationSum } / requests} ms", "Mean response time")
-                val histogram = sumHistograms(kovexy.storage.latencyHistograms(buckets.first(), site).values)
+                val histogram = sumHistograms(kovexy.storage.latencyHistograms(buckets.first(), domain).values)
                 stat(formatLatencyBound(histogramQuantile(histogram, 0.5)), "Median")
                 stat(formatLatencyBound(histogramQuantile(histogram, 0.95)), "95th percentile")
                 stat(formatLatencyBound(histogramQuantile(histogram, 0.99)), "99th percentile")
@@ -82,17 +82,17 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                 p("muted small") { +"Values are the upper bound of a bucket: ≤ 150 ms means between 100 and 150 ms. Times above 60 s show as 60 s in the chart. Kept as long as the hourly values." }
             }
             card("Traffic", "gap-top") { chart("/statistics/chart.svg?metric=traffic&$query", "Bytes received and sent") }
-            card("Per site", "gap-top") {
-                val perSite = totals.groupBy { it.site }
-                if (perSite.isEmpty()) p("muted") { +"No requests in this range." }
+            card("Per domain", "gap-top") {
+                val perDomain = totals.groupBy { it.domain }
+                if (perDomain.isEmpty()) p("muted") { +"No requests in this range." }
                 else div("table-wrap") {
                     table("stack-mobile") {
-                        thead { tr { th { +"Site" }; th(classes = "num") { +"Requests" }; th(classes = "num") { +"2xx" }; th(classes = "num") { +"3xx" }; th(classes = "num") { +"4xx" }; th(classes = "num") { +"5xx" }; th(classes = "num") { +"Sent" }; th(classes = "num") { +"Mean" }; th(classes = "num") { +"Max" } } }
+                        thead { tr { th { +"Domain" }; th(classes = "num") { +"Requests" }; th(classes = "num") { +"2xx" }; th(classes = "num") { +"3xx" }; th(classes = "num") { +"4xx" }; th(classes = "num") { +"5xx" }; th(classes = "num") { +"Sent" }; th(classes = "num") { +"Mean" }; th(classes = "num") { +"Max" } } }
                         tbody {
-                            perSite.entries.sortedByDescending { e -> e.value.sumOf { it.requests } }.forEach { (key, list) ->
+                            perDomain.entries.sortedByDescending { e -> e.value.sumOf { it.requests } }.forEach { (key, list) ->
                                 val requests = list.sumOf { it.requests }
                                 tr {
-                                    td { attributes["data-label"] = "Site"; +siteLabel(key) }
+                                    td { attributes["data-label"] = "Domain"; +domainLabel(key) }
                                     td("num") { attributes["data-label"] = "Requests"; +requests.toString() }
                                     td("num") { attributes["data-label"] = "2xx"; +list.sumOf { it.status2xx }.toString() }
                                     td("num") { attributes["data-label"] = "3xx"; +list.sumOf { it.status3xx }.toString() }
@@ -107,10 +107,10 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                     }
                 }
             }
-            val tops = kovexy.storage.topLists(kovexy.accessLog.dayStart(buckets.first()), site)
+            val tops = kovexy.storage.topLists(kovexy.accessLog.dayStart(buckets.first()), domain)
             card("Top lists", "gap-top") {
                 p("muted small") {
-                    +"Counted per day, whole days from ${formatTimestamp(kovexy.accessLog.dayStart(buckets.first()))} on. Each list keeps the $TOP_LIST_SIZE most frequent entries per site and day, rare entries may be missing."
+                    +"Counted per day, whole days from ${formatTimestamp(kovexy.accessLog.dayStart(buckets.first()))} on. Each list keeps the $TOP_LIST_SIZE most frequent entries per domain and day, rare entries may be missing."
                 }
             }
             div("top-grid gap-top") {
@@ -138,8 +138,8 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
     get("/statistics/chart.svg") {
         val params = call.request.queryParameters
         val range = Range.entries.firstOrNull { it.key == params["range"] } ?: Range.DAY
-        val site = params["site"]?.takeIf { it in kovexy.statsSites() }
-        val (buckets, rows) = kovexy.loadRange(range, site)
+        val domain = params["domain"]?.takeIf { it in kovexy.statsDomains() }
+        val (buckets, rows) = kovexy.loadRange(range, domain)
         fun sum(selector: (StatsRow) -> Long) = buckets.map { b -> rows[b].orEmpty().sumOf(selector).toDouble() }
         val svg = when (params["metric"]) {
             "duration" -> chartSvg(buckets, listOf(
@@ -147,7 +147,7 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
                 Series("highest", "max", buckets.map { b -> rows[b].orEmpty().maxOfOrNull { it.durationMax }?.toDouble() ?: 0.0 }),
             ), stacked = false, hourly = range.hourly, unit = "ms")
             "percentiles" -> {
-                val histograms = kovexy.storage.latencyHistograms(buckets.first(), site)
+                val histograms = kovexy.storage.latencyHistograms(buckets.first(), domain)
                 val perBucket = buckets.mapIndexed { i, start ->
                     val end = buckets.getOrNull(i + 1) ?: Long.MAX_VALUE
                     sumHistograms(histograms.filterKeys { it in start until end }.values)
@@ -167,7 +167,7 @@ fun Route.statisticsRoutes(kovexy: Kovexy) {
 }
 
 /** Buckets of [range] ending now and the rows per bucket. */
-private fun Kovexy.loadRange(range: Range, site: String?): Pair<List<Long>, Map<Long, List<StatsRow>>> {
+private fun Kovexy.loadRange(range: Range, domain: String?): Pair<List<Long>, Map<Long, List<StatsRow>>> {
     val now = clock()
     val buckets = if (range.hourly) {
         val current = accessLog.hourStart(now)
@@ -177,7 +177,7 @@ private fun Kovexy.loadRange(range: Range, site: String?): Pair<List<Long>, Map<
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         (range.buckets - 1 downTo 0).map { today.minusDays(it.toLong()).atStartOfDay(zone).toInstant().toEpochMilli() }
     }
-    val rows = storage.statistics(range.hourly, buckets.first(), site?.let { listOf(it) }).groupBy { it.bucket }
+    val rows = storage.statistics(range.hourly, buckets.first(), domain?.let { listOf(it) }).groupBy { it.bucket }
     return buckets to rows
 }
 

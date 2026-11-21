@@ -150,10 +150,10 @@ tasks.test {
     }
 }
 
-// Local development: proxy on 18080 and 18443, admin UI on 18000, demo upstreams, data in build/dev
+// Local development: proxy on 18080 and 18443, admin UI on 18000, demo backends, data in build/dev
 tasks.register<JavaExec>("devRun") {
     group = "application"
-    description = "Runs Kovexy with demo upstreams: proxy on 18080 (plain) and 18443 (TLS), admin UI on http://localhost:18000, data in build/dev."
+    description = "Runs Kovexy with demo backends: proxy on 18080 (plain) and 18443 (TLS), admin UI on http://localhost:18000, data in build/dev."
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("bayern.kickner.kovexy.dev.DevServerKt")
     workingDir = projectDir

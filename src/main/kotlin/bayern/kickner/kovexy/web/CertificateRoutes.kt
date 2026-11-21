@@ -40,7 +40,7 @@ fun Route.certificateRoutes(kovexy: Kovexy) {
     post("/certificates/renew") {
         val domain = call.receiveForm()["domain"].orEmpty()
         if (isValidHostName(domain).not() || domain !in kovexy.routing.tlsDomains()) {
-            return@post call.errorPage(HttpStatusCode.BadRequest, "Unknown domain", "No enabled site uses this domain on the TLS listener.")
+            return@post call.errorPage(HttpStatusCode.BadRequest, "Unknown domain", "No enabled domain uses this name.")
         }
         kovexy.certificates.renewNow(domain)
         call.respondRedirect("/certificates?done=renew-started")
@@ -56,7 +56,7 @@ private suspend fun ApplicationCall.certificatePage(kovexy: Kovexy, problems: Li
         pageHeader("Certificates", "One certificate per domain, from ACME with the HTTP-01 challenge on port 80. Checked every 10 minutes, renewed in the last third of the lifetime.")
         if (problems.isNotEmpty()) problems("Not saved:", problems)
         card {
-            if (certs.isEmpty()) p("muted") { +"No domain on the TLS listener yet." }
+            if (certs.isEmpty()) p("muted") { +"No domain yet." }
             else div("table-wrap") {
                 table("stack-mobile") {
                     thead { tr { th { +"Domain" }; th { +"State" }; th { +"Valid until" }; th { +"Issuer" }; th { } } }

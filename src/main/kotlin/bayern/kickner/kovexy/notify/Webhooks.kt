@@ -53,7 +53,7 @@ fun fillTemplate(template: String, event: Event): String {
         "subject" to event.subject,
         "body" to event.body,
         "time" to formatTimestamp(event.time),
-        "site" to event.site,
+        "domain" to event.domain,
     )
     return values.entries.fold(template) { text, (name, value) -> text.replace("{{$name}}", jsonEscape(value)) }
 }

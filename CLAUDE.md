@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Kovexy, a reverse proxy in Kotlin (Ktor with the Jetty engine, Ktor client CIO towards upstreams, acme4j, Exposed
+Kovexy, a reverse proxy in Kotlin (Ktor with the Jetty engine, Ktor client CIO towards backends, acme4j, Exposed
 with SQLite, kotlinx.html with htmx). All three phases are implemented, not yet run in real operation. The German
 concept and the phase specifications live outside the repository in `../kotlin-reverse-proxy/` (`KONZEPT.md`, `SPEZIFIKATION-PHASE1.md` to
 `-PHASE3.md`) and are the source of every design decision.
@@ -30,7 +30,7 @@ Use the Gradle wrapper.
 ./gradlew devRun
 ```
 
-`devRun` starts Kovexy with two demo upstreams: proxy on 18080 (plain) and 18443 (TLS), admin UI on
+`devRun` starts Kovexy with two demo backends: proxy on 18080 (plain) and 18443 (TLS), admin UI on
 `http://localhost:18000` with login through the mock OIDC provider on 18001 (pick a user), data in `build/dev`. `.claude/launch.json` has it
 as `kovexy-dev`.
 
@@ -86,7 +86,7 @@ Invariants, keep them when adding code:
 - Nothing from Zoraxy (AGPL) is copied. Third party data and patterns are listed in `NOTICE` with their license.
 - No Jetty bean is added while the server runs, connectors that already run do not pick it up. Limits live in
   `ConnectionGate`, created before the start, only its values change.
-- `/.kovexy/` on proxied domains belongs to Kovexy (`proxy/ReservedPaths.kt`) and never reaches an upstream. Kovexy's
+- `/.kovexy/` on proxied domains belongs to Kovexy (`proxy/ReservedPaths.kt`) and never reaches a backend. Kovexy's
   own captcha cookie and the `X-Forwarded-User` family from visitors are removed before forwarding. Kovexy has no
   login in front of apps, apps protect themselves.
 - Header handling follows Caddy: `Host` unchanged, `X-Forwarded-*` replaced unless the peer is a trusted proxy,

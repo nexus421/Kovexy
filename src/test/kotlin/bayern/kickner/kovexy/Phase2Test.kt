@@ -142,16 +142,16 @@ class AccessUnitTest {
 /** Access profiles, bans, OIDC and audit with real ports. */
 class Phase2IntegrationTest {
 
-    private fun config(backend: Int, profiles: String, siteAccess: String = "\"access\": \"p\",", extra: String = "") = """
+    private fun config(backend: Int, profiles: String, domainAccess: String = "\"access\": \"p\",", extra: String = "") = """
         { "admin": { "port": ADMIN_PORT }, $extra
           "accessProfiles": [ $profiles ],
-          "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$backend" } ] } ],
-          "sites": [
-            { "domains": ["a.test"], $siteAccess "locations": [
-              { "path": "/", "target": { "type": "upstream", "upstream": "app" } },
-              { "path": "/open", "access": "open", "target": { "type": "upstream", "upstream": "app" } },
-              { "path": "/.env", "match": "exact", "target": { "type": "upstream", "upstream": "app" } } ] },
-            { "domains": ["b.test"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] }
+          "backends": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$backend" } ] } ],
+          "domains": [
+            { "names": ["a.test"], $domainAccess "routes": [
+              { "path": "/", "target": { "type": "backend", "backend": "app" } },
+              { "path": "/open", "access": "open", "target": { "type": "backend", "backend": "app" } },
+              { "path": "/.env", "match": "exact", "target": { "type": "backend", "backend": "app" } } ] },
+            { "names": ["b.test"], "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] }
           ] }
     """.trimIndent()
 
@@ -159,12 +159,12 @@ class Phase2IntegrationTest {
         h.https(host, path, method = method, headers = headers, body = if (method == "POST") ByteArray(1) else null)
 
     @Test
-    fun ipListsAndLocationProfileReplacesSiteProfile(): Unit = runBlocking {
+    fun ipListsAndRouteProfileReplacesDomainProfile(): Unit = runBlocking {
         TestBackend().use { backend ->
             val profiles = """{ "name": "p", "denyIps": ["127.0.0.1"] }, { "name": "open" }"""
             Harness(config(backend.port, profiles)).use { h ->
                 assertEquals(403, get(h, "a.test", "/x").status)
-                assertEquals(200, get(h, "a.test", "/open/x").status, "The location profile replaces the site profile completely")
+                assertEquals(200, get(h, "a.test", "/open/x").status, "The route profile replaces the domain profile completely")
                 assertEquals(200, get(h, "b.test", "/x").status)
                 h.writeConfigByHand(config(backend.port, """{ "name": "p", "allowIps": ["10.0.0.0/8"] }, { "name": "open" }"""))
                 assertEquals(403, get(h, "a.test", "/x").status)
@@ -190,23 +190,23 @@ class Phase2IntegrationTest {
                 assertEquals(0, h.kovexy.bans.list().size, "An address on the allow list is not banned")
                 assertEquals(200, get(h, "a.test", "/x").status)
             }
-            // A ban from another profile holds everywhere, except where the profile of the site and location names the address
+            // A ban from another profile holds everywhere, except where the profile of the domain and route names the address
             Harness(config(backend.port, """{ "name": "p", "trapPaths": { "enabled": true } }, { "name": "open", "allowIps": ["127.0.0.1"] }""")).use { h ->
                 assertEquals(403, get(h, "a.test", "/wp-login.php").status)
                 assertEquals(1, h.kovexy.bans.list().size, "A profile without the address bans it")
                 assertEquals(403, get(h, "a.test", "/x").status, "Still banned where the profile does not name it")
-                assertEquals(403, get(h, "b.test", "/x").status, "Still banned on a site without a profile")
-                assertEquals(200, get(h, "a.test", "/open/x").status, "The profile of this location names the address")
+                assertEquals(403, get(h, "b.test", "/x").status, "Still banned on a domain without a profile")
+                assertEquals(200, get(h, "a.test", "/open/x").status, "The profile of this route names the address")
             }
         }
     }
 
     @Test
-    fun trapBansForAllSitesUntilLiftedOrExpired(): Unit = runBlocking {
+    fun trapBansForAllDomainsUntilLiftedOrExpired(): Unit = runBlocking {
         var now = System.currentTimeMillis()
         TestBackend().use { backend ->
             Harness(config(backend.port, """{ "name": "p", "trapPaths": { "enabled": true, "banDuration": "1h" } }, { "name": "open" }"""), clock = { now }).use { h ->
-                assertEquals(200, get(h, "a.test", "/.env").status, "An exact location for the path disarms the trap")
+                assertEquals(200, get(h, "a.test", "/.env").status, "An exact route for the path disarms the trap")
                 // A browser sent there by another site (an image or a link on a foreign page) is refused, not banned
                 assertEquals(403, get(h, "a.test", "/wp-login.php", listOf("Sec-Fetch-Site" to "cross-site", "Sec-Fetch-Mode" to "no-cors")).status)
                 assertEquals(403, get(h, "a.test", "/wp-admin/", listOf("Referer" to "https://evil.example/page")).status)
@@ -217,7 +217,7 @@ class Phase2IntegrationTest {
                 assertEquals(1, h.kovexy.bans.list().size, "A same-site Referer still bans")
                 assertTrue(h.kovexy.bans.lift("127.0.0.1"))
                 assertEquals(403, get(h, "a.test", "/wp-login.php").status)
-                assertEquals(403, get(h, "b.test", "/x").status, "The ban counts for all sites")
+                assertEquals(403, get(h, "b.test", "/x").status, "The ban counts for all domains")
                 assertEquals(1, h.kovexy.bans.list().size)
                 assertTrue(h.kovexy.bans.lift("127.0.0.1"))
                 assertEquals(200, get(h, "b.test", "/x").status)
@@ -229,27 +229,27 @@ class Phase2IntegrationTest {
     }
 
     @Test
-    fun plainHttpNeverReachesASiteOrTheDefaultSite(): Unit = runBlocking {
+    fun plainHttpNeverReachesASiteOrTheFallback(): Unit = runBlocking {
         TestBackend().use { backend ->
             TestBackend(name = "default").use { fallback ->
                 val config = """
                     { "admin": { "port": ADMIN_PORT },
-                      "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] },
+                      "backends": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] },
                                      { "name": "fallback", "servers": [ { "address": "127.0.0.1:${fallback.port}" } ] } ],
-                      "defaultSite": { "type": "upstream", "upstream": "fallback" },
-                      "sites": [ { "domains": ["tls.test"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ] }
+                      "fallback": { "type": "backend", "backend": "fallback" },
+                      "domains": [ { "names": ["tls.test"], "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] } ] }
                 """.trimIndent()
                 Harness(config).use { h ->
-                    val site = get(h, "tls.test", "/x")
-                    assertEquals(200, site.status)
-                    assertNotEquals("default", site.header("X-Backend"))
+                    val domain = get(h, "tls.test", "/x")
+                    assertEquals(200, domain.status)
+                    assertNotEquals("default", domain.header("X-Backend"))
                     listOf("tls.test", "other.test").forEach { host ->
                         val plain = rawRequest(h.ports.http, host, "/x")
                         assertEquals(308, plain.status, "$host on port 80 is only redirected")
-                        assertNull(plain.header("X-Backend"), "No upstream, not even the default one, sees plain HTTP")
+                        assertNull(plain.header("X-Backend"), "No backend, not even the default one, sees plain HTTP")
                     }
                     val other = get(h, "other.test", "/x")
-                    assertEquals(200, other.status, "Unknown domains still go to the default site")
+                    assertEquals(200, other.status, "Unknown domains still go to the fallback")
                     assertEquals("default", other.header("X-Backend"))
                 }
             }
@@ -303,7 +303,7 @@ class Phase2IntegrationTest {
                 val right = "Basic " + Base64.getEncoder().encodeToString("ada:letmein please".toByteArray())
                 val ok = get(h, "a.test", "/x", listOf("Authorization" to right))
                 assertEquals(200, ok.status)
-                assertFalse(ok.text.contains("authorization="), "The password does not reach the upstream: ${ok.text}")
+                assertFalse(ok.text.contains("authorization="), "The password does not reach the backend: ${ok.text}")
                 assertEquals(200, get(h, "a.test", "/public/file").status, "Exceptions need no login")
                 assertEquals(401, get(h, "a.test", "/publicity").status, "Exception prefixes only match at path boundaries")
             }

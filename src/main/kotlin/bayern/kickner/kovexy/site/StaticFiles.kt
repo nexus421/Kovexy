@@ -32,7 +32,7 @@ data class StaticResult(val status: Int, val bytes: Long)
 /**
  * Serves a file below [root].
  *
- * - The path is the normalized request path below the location, so `..` cannot leave [root]. Symbolic links that
+ * - The path is the normalized request path below the route, so `..` cannot leave [root]. Symbolic links that
  *   point outside of [root] are refused as well.
  * - A directory without trailing slash is redirected to the path with slash (`308`, like Caddy).
  * - A directory gets `index.html`, then `index.htm`, otherwise a listing if [listing] is on (off by default, a
@@ -41,8 +41,8 @@ data class StaticResult(val status: Int, val bytes: Long)
  * - `Last-Modified` and `If-Modified-Since` are supported.
  *
  * @param requestPath The full request path, for the redirect and the listing heading.
- * @param relative The normalized path below the location, starting with `/`.
- * @param extraHeaders Response headers of the location, applied to every answer.
+ * @param relative The normalized path below the route, starting with `/`.
+ * @param extraHeaders Response headers of the route, applied to every answer.
  */
 suspend fun ApplicationCall.serveStatic(
     root: File,

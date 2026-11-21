@@ -67,7 +67,7 @@ fun allowedOrigins(admin: AdminConfig, port: Int): Set<String> = buildSet {
 }
 
 /**
- * The visitor's address. When the admin UI is reached through a site of Kovexy itself, the request comes from
+ * The visitor's address. When the admin UI is reached through a domain of Kovexy itself, the request comes from
  * loopback and Kovexy's proxy hands over the visitor it resolved (trusted proxies included) in [ADMIN_RELAY_HEADER]
  * with the per-process secret. `X-Forwarded-For` is never believed here, any local process could set it.
  */

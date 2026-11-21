@@ -65,7 +65,7 @@ fun parseIpLiteral(text: String): ByteArray? {
 }
 
 /**
- * Host and port of an upstream server.
+ * Host and port of a backend server.
  *
  * @property host Host name or IP, IPv6 without brackets.
  * @property port TCP port.

@@ -24,7 +24,7 @@ val PASSIVE_RECHECK_INTERVAL = 30.seconds
 private val PASSIVE_CHECK_TIMEOUT = 5.seconds
 
 /**
- * Checks upstream servers:
+ * Checks backend servers:
  *
  * - **active** (Caddy) only for groups with `healthCheck.path`: a `GET` to every server every `interval`, a status
  *   other than `expectStatus` or no answer within `timeout` marks it down, one good answer marks it up again,
@@ -32,20 +32,20 @@ private val PASSIVE_CHECK_TIMEOUT = 5.seconds
  *   proxy), a server that is down and has no active check is tried with a TCP connect every
  *   [PASSIVE_RECHECK_INTERVAL] and marked up when it accepts.
  *
- * @param pool The upstream groups.
+ * @param pool The backends.
  * @param clients HTTP clients for the active checks.
  * @param events Receives up and down events.
  * @param clock Unix milliseconds.
  */
 class HealthChecker(
-    private val pool: UpstreamPool,
-    private val clients: () -> UpstreamClients,
+    private val pool: BackendPool,
+    private val clients: () -> BackendClients,
     private val events: EventSink,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     /** Next due time per server, by identity. */
-    private val due = ConcurrentHashMap<UpstreamServer, Long>()
-    private val running = ConcurrentHashMap.newKeySet<UpstreamServer>()
+    private val due = ConcurrentHashMap<BackendServer, Long>()
+    private val running = ConcurrentHashMap.newKeySet<BackendServer>()
 
     /** Starts the check loop in [scope]. */
     fun start(scope: CoroutineScope): Job = scope.launch(Dispatchers.IO) {
@@ -81,7 +81,7 @@ class HealthChecker(
         }
     }
 
-    private suspend fun activeCheck(group: UpstreamGroup, server: UpstreamServer) {
+    private suspend fun activeCheck(group: BackendGroup, server: BackendServer) {
         val check = group.config.healthCheck
         val scheme = if (server.config.tls) "https" else "http"
         val result = runCatching {
@@ -101,7 +101,7 @@ class HealthChecker(
         server.markHealth(up, reason, clock(), events)
     }
 
-    private fun passiveCheck(server: UpstreamServer) {
+    private fun passiveCheck(server: BackendServer) {
         val up = canConnect(server.address)
         if (up) server.markHealth(true, null, clock(), events)
     }

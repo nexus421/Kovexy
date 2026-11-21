@@ -33,17 +33,17 @@ fun validateConfig(config: KovexyConfig): List<String> = buildList {
         if (Cidr.parse(range) == null) add("trustedProxies[$i] \"$range\" is no IP address or CIDR range like 192.168.1.0/24")
     }
 
-    val upstreamNames = config.upstreams.map { it.name }.toSet()
-    config.upstreams.forEachIndexed { i, upstream -> validateUpstream("upstreams[$i]", upstream) }
-    config.upstreams.groupBy { it.name }.filter { it.value.size > 1 }.keys.forEach { add("upstream name \"$it\" is used more than once") }
+    val backendNames = config.backends.map { it.name }.toSet()
+    config.backends.forEachIndexed { i, backend -> validateBackend("backends[$i]", backend) }
+    config.backends.groupBy { it.name }.filter { it.value.size > 1 }.keys.forEach { add("backend name \"$it\" is used more than once") }
 
-    validateDefaultSite(config.defaultSite, upstreamNames)
+    validateFallback(config.fallback, backendNames)
 
     val profileNames = config.accessProfiles.map { it.name }.toSet()
     config.accessProfiles.forEachIndexed { i, profile -> validateProfile("accessProfiles[$i]", profile) }
     config.accessProfiles.groupBy { it.name }.filter { it.value.size > 1 }.keys.forEach { add("access profile name \"$it\" is used more than once") }
 
-    config.sites.forEachIndexed { i, site -> validateSite("sites[$i]", site, upstreamNames, profileNames) }
+    config.domains.forEachIndexed { i, domain -> validateDomain("domains[$i]", domain, backendNames, profileNames) }
     (config.aiCrawlers.add.map { "aiCrawlers.add" to it } + config.aiCrawlers.ignore.map { "aiCrawlers.ignore" to it }).forEach { (field, entry) ->
         if (entry.isBlank()) add("$field must not contain empty entries")
         if (entry.length > MAX_AI_CRAWLER_ENTRY) add("$field entry \"${entry.take(40)}...\" is longer than $MAX_AI_CRAWLER_ENTRY characters")
@@ -55,9 +55,9 @@ fun validateConfig(config: KovexyConfig): List<String> = buildList {
         if (config.incus.socket.isBlank()) add("incus.socket must not be blank")
         if (config.incus.`interface`.isBlank()) add("incus.interface must not be blank")
     }
-    val domainOwners = config.sites.flatMapIndexed { i, site -> site.domains.map { it to i } }
+    val domainOwners = config.domains.flatMapIndexed { i, domain -> domain.names.map { it to i } }
     domainOwners.groupBy({ it.first }, { it.second }).filter { it.value.size > 1 }.forEach { (domain, owners) ->
-        add("domain \"$domain\" belongs to more than one site (sites ${owners.joinToString(", ")})")
+        add("name \"$domain\" belongs to more than one domain (domains ${owners.joinToString(", ")})")
     }
 
     config.webhooks.forEachIndexed { i, hook -> validateWebhook("webhooks[$i]", hook) }
@@ -125,66 +125,66 @@ private fun MutableList<String>.validateAcme(acme: AcmeConfig) {
     if (acme.email.isNotEmpty() && emailAddress.matches(acme.email).not()) add("acme.email is no valid mail address")
 }
 
-private fun MutableList<String>.validateUpstream(owner: String, upstream: UpstreamConfig) {
-    if (upstream.name.isBlank()) add("$owner.name must not be blank")
-    if (upstream.name.startsWith("incus:")) add("$owner.name must not start with incus:, Kovexy uses that for approved Incus containers")
-    if (upstream.servers.isEmpty()) add("$owner (\"${upstream.name}\") needs at least one server")
-    upstream.servers.forEachIndexed { j, server ->
+private fun MutableList<String>.validateBackend(owner: String, backend: BackendConfig) {
+    if (backend.name.isBlank()) add("$owner.name must not be blank")
+    if (backend.name.startsWith("incus:")) add("$owner.name must not start with incus:, Kovexy uses that for approved Incus containers")
+    if (backend.servers.isEmpty()) add("$owner (\"${backend.name}\") needs at least one server")
+    backend.servers.forEachIndexed { j, server ->
         val where = "$owner.servers[$j]"
         if (HostPort.parse(server.address) == null) add("$where.address \"${server.address}\" must be host:port, IPv6 as [address]:port")
         if (server.weight < 0) add("$where.weight must not be negative")
         if (server.maxConnections < 0) add("$where.maxConnections must not be negative")
         if (server.skipCertVerify && server.tls.not()) add("$where.skipCertVerify only makes sense with tls")
     }
-    upstream.servers.groupBy { it.address }.filter { it.value.size > 1 }.keys.forEach { add("$owner lists server $it more than once") }
-    val check = upstream.healthCheck
+    backend.servers.groupBy { it.address }.filter { it.value.size > 1 }.keys.forEach { add("$owner lists server $it more than once") }
+    val check = backend.healthCheck
     if (check.path.isNotEmpty() && check.path.startsWith("/").not()) add("$owner.healthCheck.path must start with /")
     if (check.interval < 1.seconds) add("$owner.healthCheck.interval must be at least 1s")
     if (check.timeout <= Duration.ZERO) add("$owner.healthCheck.timeout must be positive")
     if (check.expectStatus !in 100..599) add("$owner.healthCheck.expectStatus must be a HTTP status code")
 }
 
-private fun MutableList<String>.validateDefaultSite(site: DefaultSite, upstreams: Set<String>) {
-    when (site) {
-        is DefaultSite.Upstream -> if (site.upstream !in upstreams) add("defaultSite.upstream \"${site.upstream}\" does not exist")
-        is DefaultSite.Redirect -> {
-            checkAbsoluteUrl("defaultSite.url", site.url) { true }?.let(::add)
-            if (site.status !in REDIRECT_STATUSES) add("defaultSite.status must be 301 or 307")
+private fun MutableList<String>.validateFallback(domain: Fallback, backends: Set<String>) {
+    when (domain) {
+        is Fallback.Backend -> if (domain.backend !in backends) add("fallback.backend \"${domain.backend}\" does not exist")
+        is Fallback.Redirect -> {
+            checkAbsoluteUrl("fallback.url", domain.url) { true }?.let(::add)
+            if (domain.status !in REDIRECT_STATUSES) add("fallback.status must be 301 or 307")
         }
 
-        is DefaultSite.Static, DefaultSite.NotFound, DefaultSite.NoResponse -> Unit
+        is Fallback.Static, Fallback.NotFound, Fallback.NoResponse -> Unit
     }
 }
 
 /** The redirect codes Kovexy offers, like Zoraxy. */
 val REDIRECT_STATUSES = setOf(301, 307)
 
-private fun MutableList<String>.validateSite(owner: String, site: SiteConfig, upstreams: Set<String>, profiles: Set<String>) {
-    if (site.domains.isEmpty()) add("$owner needs at least one domain")
-    site.domains.forEach { domain ->
-        if (isValidHostName(domain).not()) add("$owner domain \"$domain\" must be a lower case domain name without wildcard, port or trailing dot")
+private fun MutableList<String>.validateDomain(owner: String, domain: DomainConfig, backends: Set<String>, profiles: Set<String>) {
+    if (domain.names.isEmpty()) add("$owner needs at least one name")
+    domain.names.forEach { domain ->
+        if (isValidHostName(domain).not()) add("$owner name \"$domain\" must be a lower case domain name without wildcard, port or trailing dot")
     }
-    site.domains.groupBy { it }.filter { it.value.size > 1 }.keys.forEach { add("$owner lists domain $it more than once") }
-    site.access?.let { if (it !in profiles) add("$owner.access \"$it\" is no access profile") }
+    domain.names.groupBy { it }.filter { it.value.size > 1 }.keys.forEach { add("$owner lists domain $it more than once") }
+    domain.access?.let { if (it !in profiles) add("$owner.access \"$it\" is no access profile") }
 
-    site.locations.forEachIndexed { j, location -> validateLocation("$owner.locations[$j]", location, upstreams, profiles) }
-    site.locations.groupBy { it.path to it.match }.filter { it.value.size > 1 }.keys.forEach { (path, match) ->
-        add("$owner has more than one ${match.name.lowercase()} location for $path")
+    domain.routes.forEachIndexed { j, route -> validateRoute("$owner.routes[$j]", route, backends, profiles) }
+    domain.routes.groupBy { it.path to it.match }.filter { it.value.size > 1 }.keys.forEach { (path, match) ->
+        add("$owner has more than one ${match.name.lowercase()} route for $path")
     }
 }
 
-private fun MutableList<String>.validateLocation(owner: String, location: LocationConfig, upstreams: Set<String>, profiles: Set<String>) {
-    val path = location.path
+private fun MutableList<String>.validateRoute(owner: String, route: RouteConfig, backends: Set<String>, profiles: Set<String>) {
+    val path = route.path
     if (path.startsWith("/").not()) add("$owner.path must start with /")
-    if (location.match == MatchType.PREFIX && path.length > 1 && path.endsWith("/")) {
-        add("$owner.path of a prefix location must not end with a slash, \"${path.trimEnd('/')}\" already matches everything below it")
+    if (route.match == MatchType.PREFIX && path.length > 1 && path.endsWith("/")) {
+        add("$owner.path of a prefix route must not end with a slash, \"${path.trimEnd('/')}\" already matches everything below it")
     }
     if (path.any { it.isWhitespace() || it == '?' || it == '#' }) add("$owner.path must not contain spaces, ? or #")
-    location.access?.let { if (it !in profiles) add("$owner.access \"$it\" is no access profile") }
-    if (location.stripPrefix && location.target !is Target.Upstream) add("$owner.stripPrefix only applies to upstream targets")
+    route.access?.let { if (it !in profiles) add("$owner.access \"$it\" is no access profile") }
+    if (route.stripPrefix && route.target !is Target.Backend) add("$owner.stripPrefix only applies to backend targets")
 
-    when (val target = location.target) {
-        is Target.Upstream -> if (target.upstream !in upstreams) add("$owner.target.upstream \"${target.upstream}\" does not exist")
+    when (val target = route.target) {
+        is Target.Backend -> if (target.backend !in backends) add("$owner.target.backend \"${target.backend}\" does not exist")
         is Target.Static -> if (target.root.isBlank()) add("$owner.target.root must not be blank")
         is Target.Redirect -> {
             checkAbsoluteUrl("$owner.target.url", target.url) { true }?.let(::add)
@@ -193,8 +193,8 @@ private fun MutableList<String>.validateLocation(owner: String, location: Locati
 
         is Target.Deny -> if (target.status !in 200..599) add("$owner.target.status must be between 200 and 599")
     }
-    location.requestHeaders.forEachIndexed { k, rule -> validateHeaderRule("$owner.requestHeaders[$k]", rule) }
-    location.responseHeaders.forEachIndexed { k, rule -> validateHeaderRule("$owner.responseHeaders[$k]", rule) }
+    route.requestHeaders.forEachIndexed { k, rule -> validateHeaderRule("$owner.requestHeaders[$k]", rule) }
+    route.responseHeaders.forEachIndexed { k, rule -> validateHeaderRule("$owner.responseHeaders[$k]", rule) }
 }
 
 private fun MutableList<String>.validateHeaderRule(owner: String, rule: HeaderRule) {
@@ -216,8 +216,8 @@ private fun MutableList<String>.validateWebhook(owner: String, hook: WebhookConf
 }
 
 private fun MutableList<String>.validateLimits(limits: LimitsConfig) {
-    if (limits.upstreamConnectTimeout <= Duration.ZERO) add("limits.upstreamConnectTimeout must be positive")
-    if (limits.upstreamKeepAlive <= Duration.ZERO) add("limits.upstreamKeepAlive must be positive")
+    if (limits.backendConnectTimeout <= Duration.ZERO) add("limits.backendConnectTimeout must be positive")
+    if (limits.backendKeepAlive <= Duration.ZERO) add("limits.backendKeepAlive must be positive")
     if (limits.clientIdleTimeout < 1.seconds) add("limits.clientIdleTimeout must be at least 1s")
     if (limits.maxRequestHeaderBytes !in 1024..1024 * 1024) add("limits.maxRequestHeaderBytes must be between 1024 and 1048576")
     if (limits.maxConnections < 0) add("limits.maxConnections must not be negative, 0 is unlimited")

@@ -18,13 +18,13 @@ class ProxyIntegrationTest {
     private fun config(backendPort: Int) = """
         {
           "admin": { "port": ADMIN_PORT },
-          "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$backendPort" } ] } ],
-          "sites": [
+          "backends": [ { "name": "app", "servers": [ { "address": "127.0.0.1:$backendPort" } ] } ],
+          "domains": [
             {
-              "domains": ["a.test", "www.a.test"],
-              "locations": [
-                { "path": "/", "target": { "type": "upstream", "upstream": "app" } },
-                { "path": "/api", "stripPrefix": true, "target": { "type": "upstream", "upstream": "app" },
+              "names": ["a.test", "www.a.test"],
+              "routes": [
+                { "path": "/", "target": { "type": "backend", "backend": "app" } },
+                { "path": "/api", "stripPrefix": true, "target": { "type": "backend", "backend": "app" },
                   "requestHeaders": [ { "action": "set", "name": "X-Extra", "value": "1" } ],
                   "responseHeaders": [ { "action": "set", "name": "X-Frame-Options", "value": "DENY" } ] },
                 { "path": "/admin", "target": { "type": "deny", "status": 403 } },
@@ -33,7 +33,7 @@ class ProxyIntegrationTest {
               ]
             }
           ],
-          "defaultSite": { "type": "notFound" }
+          "fallback": { "type": "notFound" }
         }
     """.trimIndent()
 
@@ -92,7 +92,7 @@ class ProxyIntegrationTest {
         assertEquals(listOf("/users?id=3"), seen["uri"])
         assertEquals(listOf("1"), seen["x-extra"])
         assertEquals("DENY", response.header("X-Frame-Options"))
-        // Path boundary: /apix is not below /api and goes to the root location unchanged
+        // Path boundary: /apix is not below /api and goes to the root route unchanged
         assertEquals(listOf("/apix"), echo(https("a.test", "/apix"))["uri"])
     }
 
@@ -119,9 +119,9 @@ class ProxyIntegrationTest {
         assertEquals("https://a.test:${harness.ports.https}/p?q=1", redirect.header("Location"))
         assertEquals(308, http("a.test", "/p", method = "POST").status, "308 keeps the method")
         val unknown = http("unknown.test", "/x")
-        assertEquals(308, unknown.status, "Unknown hosts are redirected too, the default site only answers on HTTPS")
+        assertEquals(308, unknown.status, "Unknown hosts are redirected too, the fallback only answers on HTTPS")
         assertEquals("https://unknown.test:${harness.ports.https}/x", unknown.header("Location"))
-        assertEquals(400, http("a.test@evil.test", "/").status, "A crafted Host never ends up in Location")
+        assertEquals(400, http("a.test@evil.test", "/").status, "A crafted Host never ends up in Route")
         assertEquals(400, http("a.test/evil", "/").status)
         assertEquals(200, https("a.test").status)
     }
@@ -133,7 +133,7 @@ class ProxyIntegrationTest {
         assertEquals("CN=www.a.test", https("www.a.test").certificate!!.subjectX500Principal.name)
         assertEquals("CN=kovexy-fallback", https("unknown.test").certificate!!.subjectX500Principal.name)
         assertEquals("CN=kovexy-fallback", https("a.test", sni = "").certificate!!.subjectX500Principal.name)
-        // SNI host check is off: a Host that does not match the certificate still reaches the site
+        // SNI host check is off: a Host that does not match the certificate still reaches the domain
         assertEquals(200, https("a.test", sni = "unknown.test").status)
         assertEquals(404, https("unknown.test").status)
     }
@@ -164,13 +164,13 @@ class ProxyIntegrationTest {
         https("a.test", "/admin")
         var entries = emptyList<bayern.kickner.kovexy.stats.AccessRecord>()
         repeat(50) {
-            entries = harness.kovexy.accessLog.latest(site = "a.test")
+            entries = harness.kovexy.accessLog.latest(domain = "a.test")
             if (entries.size >= 2) return@repeat
             delay(100)
         }
         assertTrue(entries.any { it.path == "/x" && it.status == 200 }, "Query must not be stored: $entries")
         assertTrue(entries.any { it.path == "/admin" && it.status == 403 && it.reason == "denied" })
-        val stats = harness.kovexy.storage.statistics(hourly = true, from = 0, sites = listOf("a.test"))
+        val stats = harness.kovexy.storage.statistics(hourly = true, from = 0, domains = listOf("a.test"))
         assertTrue(stats.sumOf { it.requests } >= 2)
     }
 

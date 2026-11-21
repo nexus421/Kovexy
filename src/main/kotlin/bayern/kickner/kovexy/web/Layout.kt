@@ -61,10 +61,10 @@ enum class Nav(val label: String, val href: String, val group: NavGroup) {
     STATUS("Status", "/", NavGroup.OVERVIEW),
     STATISTICS("Statistics", "/statistics", NavGroup.OVERVIEW),
     ACCESS_LOG("Access log", "/access-log", NavGroup.OVERVIEW),
-    SITES("Sites", "/sites", NavGroup.ROUTING),
-    UPSTREAMS("Upstreams", "/upstreams", NavGroup.ROUTING),
+    DOMAINS("Domains", "/domains", NavGroup.ROUTING),
+    BACKENDS("Backends", "/backends", NavGroup.ROUTING),
     CERTIFICATES("Certificates", "/certificates", NavGroup.ROUTING),
-    DEFAULT_SITE("Default site", "/default-site", NavGroup.ROUTING),
+    FALLBACK("Fallback", "/fallback", NavGroup.ROUTING),
     INCUS("Incus", "/incus", NavGroup.ROUTING),
     ACCESS("Access", "/access", NavGroup.PROTECTION),
     SECURITY("Security", "/security", NavGroup.PROTECTION),
@@ -109,17 +109,17 @@ enum class PageFrame {
 }
 
 /**
- * Messages shown after a successful POST and redirect. The redirect only carries the key (`?done=site-saved`), so
+ * Messages shown after a successful POST and redirect. The redirect only carries the key (`?done=domain-saved`), so
  * no text from the URL ever ends up on the page.
  */
 private val flashMessages = mapOf(
-    "site-saved" to "Site saved and applied.",
-    "site-deleted" to "Site deleted.",
-    "location-saved" to "Location saved and applied.",
-    "location-deleted" to "Location deleted.",
-    "upstream-saved" to "Upstream group saved and applied.",
-    "upstream-deleted" to "Upstream group deleted.",
-    "default-saved" to "Default site saved and applied.",
+    "domain-saved" to "Domain saved and applied.",
+    "domain-deleted" to "Domain deleted.",
+    "route-saved" to "Route saved and applied.",
+    "route-deleted" to "Route deleted.",
+    "backend-saved" to "Backend saved and applied.",
+    "backend-deleted" to "Backend deleted.",
+    "default-saved" to "Fallback saved and applied.",
     "acme-saved" to "ACME settings saved.",
     "renew-started" to "Renewal started, the result shows here in a moment.",
     "webhook-saved" to "Webhook saved.",
@@ -137,7 +137,7 @@ private val flashMessages = mapOf(
     "ai-crawlers-saved" to "AI crawler list saved and applied.",
     "ban-lifted" to "Ban lifted.",
     "incus-saved" to "Incus settings saved and applied.",
-    "incus-approved" to "Container approved, its route is live.",
+    "incus-approved" to "Container approved, its domain is live.",
     "incus-rejected" to "Container rejected.",
     "incus-removed" to "Decision removed.",
 )

@@ -130,10 +130,10 @@ enum class SecurityEventType(val label: String) {
  * One security event.
  *
  * @property ip Visitor address.
- * @property site Site of the request, empty if none.
+ * @property domain Domain of the request, empty if none.
  * @property detail Short description, e.g. the path or the matched pattern group.
  */
-data class SecurityEvent(val time: Long, val type: SecurityEventType, val ip: String, val site: String, val detail: String)
+data class SecurityEvent(val time: Long, val type: SecurityEventType, val ip: String, val domain: String, val detail: String)
 
 /**
  * Security events in SQLite, written in the background like the access log so the proxy never waits. Rate limit
@@ -146,14 +146,14 @@ class SecurityEvents(private val storage: Storage, private val clock: () -> Long
     private val rateLimited = ConcurrentHashMap<String, Long>()
 
     /** Queues an event, returns at once. */
-    fun record(type: SecurityEventType, ip: String, site: String = "", detail: String = "") {
+    fun record(type: SecurityEventType, ip: String, domain: String = "", detail: String = "") {
         val now = clock()
         if (type == SecurityEventType.RATE_LIMITED) {
             val minute = now / 60_000
-            if (rateLimited.put("$ip|$site", minute) == minute) return
+            if (rateLimited.put("$ip|$domain", minute) == minute) return
             if (rateLimited.size > 10_000) rateLimited.clear()
         }
-        queue.trySend(SecurityEvent(now, type, ip, site, detail))
+        queue.trySend(SecurityEvent(now, type, ip, domain, detail))
     }
 
     /** Starts the writer in [scope]. */
@@ -178,7 +178,7 @@ class SecurityEvents(private val storage: Storage, private val clock: () -> Long
                 this[SecurityEventTable.time] = e.time
                 this[SecurityEventTable.type] = e.type.name
                 this[SecurityEventTable.ip] = e.ip.take(64)
-                this[SecurityEventTable.site] = e.site.take(253)
+                this[SecurityEventTable.domain] = e.domain.take(253)
                 this[SecurityEventTable.detail] = e.detail.take(500)
             }
         }
@@ -190,7 +190,7 @@ class SecurityEvents(private val storage: Storage, private val clock: () -> Long
         type?.let { t -> query.andWhere { SecurityEventTable.type eq t.name } }
         query.orderBy(SecurityEventTable.id, SortOrder.DESC).limit(limit).mapNotNull { row ->
             val t = runCatching { SecurityEventType.valueOf(row[SecurityEventTable.type]) }.getOrNull() ?: return@mapNotNull null
-            SecurityEvent(row[SecurityEventTable.time], t, row[SecurityEventTable.ip], row[SecurityEventTable.site], row[SecurityEventTable.detail])
+            SecurityEvent(row[SecurityEventTable.time], t, row[SecurityEventTable.ip], row[SecurityEventTable.domain], row[SecurityEventTable.detail])
         }
     }
 

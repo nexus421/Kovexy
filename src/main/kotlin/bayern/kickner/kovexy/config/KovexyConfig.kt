@@ -62,12 +62,12 @@ const val LETS_ENCRYPT_STAGING = "https://acme-staging-v02.api.letsencrypt.org/d
  * @property acme Certificates from an ACME CA.
  * @property listeners Ports the proxy listens on. Fixed to 80 and 443 in phase 1.
  * @property trustedProxies IPs or CIDR ranges whose `X-Forwarded-*` headers are believed.
- * @property defaultSite What happens for a domain no site serves.
- * @property accessProfiles Reusable access profiles for sites and locations.
+ * @property fallback What happens for a domain no domain serves.
+ * @property accessProfiles Reusable access profiles for domains and routes.
  * @property aiCrawlers Changes to the shipped AI crawler list, for every profile.
  * @property incus Discovery of Incus containers.
- * @property upstreams Reusable groups of upstream servers.
- * @property sites Sites with their domains and locations.
+ * @property backends Reusable groups of backend servers.
+ * @property domains Domains with their names and routes.
  * @property webhooks Webhook targets for notifications.
  * @property limits Timeouts and size limits.
  * @property retention How long the access log and the statistics are kept.
@@ -80,12 +80,12 @@ data class KovexyConfig(
     val acme: AcmeConfig = AcmeConfig(),
     val listeners: List<ListenerConfig> = DEFAULT_LISTENERS,
     val trustedProxies: List<String> = emptyList(),
-    val defaultSite: DefaultSite = DefaultSite.Static(),
+    val fallback: Fallback = Fallback.Static(),
     val accessProfiles: List<AccessProfile> = emptyList(),
     val aiCrawlers: AiCrawlersConfig = AiCrawlersConfig(),
     val incus: IncusConfig = IncusConfig(),
-    val upstreams: List<UpstreamConfig> = emptyList(),
-    val sites: List<SiteConfig> = emptyList(),
+    val backends: List<BackendConfig> = emptyList(),
+    val domains: List<DomainConfig> = emptyList(),
     val webhooks: List<WebhookConfig> = emptyList(),
     val limits: LimitsConfig = LimitsConfig(),
     val retention: RetentionConfig = RetentionConfig(),
@@ -111,7 +111,7 @@ const val MAX_AI_CRAWLER_ENTRY = 200
  *
  * @property host Address the admin UI binds to, loopback by default.
  * @property port Port of the admin UI.
- * @property publicUrl URL in the browser when the admin UI is reached through a site, e.g. `https://proxy.example.com`.
+ * @property publicUrl URL in the browser when the admin UI is reached through a domain, e.g. `https://proxy.example.com`.
  *   The only accepted `Origin` besides the local address. Empty when the admin UI is only used locally.
  * @property loginMode How admins log in. OIDC needs [oidc] and [publicUrl].
  * @property passwordHash Argon2id hash of the admin password in PHC format. Empty on the first start, Kovexy then
@@ -199,7 +199,7 @@ data class AcmeConfig(
 /**
  * A port the proxy listens on.
  *
- * @property name Referenced by [SiteConfig.listeners].
+ * @property name Referenced by [DomainConfig.listeners].
  * @property port TCP port.
  * @property tls Whether the port speaks TLS.
  */
@@ -211,7 +211,7 @@ data class ListenerConfig(
 )
 
 /**
- * A reusable group of upstream servers.
+ * A reusable group of backend servers.
  *
  * @property name Unique name, referenced by targets.
  * @property servers The servers of the group.
@@ -219,15 +219,15 @@ data class ListenerConfig(
  * @property healthCheck Active health check, off without a path.
  */
 @Serializable
-data class UpstreamConfig(
+data class BackendConfig(
     val name: String,
-    val servers: List<UpstreamServerConfig>,
+    val servers: List<BackendServerConfig>,
     val stickySession: Boolean = false,
     val healthCheck: HealthCheckConfig = HealthCheckConfig(),
 )
 
 /**
- * One upstream server.
+ * One backend server.
  *
  * @property address `host:port`, IPv6 addresses in brackets.
  * @property tls Talks HTTPS to the server.
@@ -236,7 +236,7 @@ data class UpstreamConfig(
  * @property maxConnections Concurrent requests to this server, more wait. `0` is unlimited.
  */
 @Serializable
-data class UpstreamServerConfig(
+data class BackendServerConfig(
     val address: String,
     val tls: Boolean = false,
     val skipCertVerify: Boolean = false,
@@ -262,25 +262,25 @@ data class HealthCheckConfig(
 )
 
 /**
- * A site: one or more domains with their locations. Always reachable over HTTPS only, plain HTTP on port 80 is
- * redirected for every host and never reaches a site.
+ * A domain: one or more domains with their routes. Always reachable over HTTPS only, plain HTTP on port 80 is
+ * redirected for every host and never reaches a domain.
  *
- * @property domains Exact domain names, e.g. `example.com` and `www.example.com`. Each gets its own certificate.
- * @property access Name of an access profile for the whole site.
- * @property locations Path rules. The most specific matching one wins, the order does not matter.
- * @property enabled A disabled site is treated as if it did not exist.
- * @property accessLog Writes requests of this site to the access log.
+ * @property names Exact domain names, e.g. `example.com` and `www.example.com`. Each gets its own certificate.
+ * @property access Name of an access profile for the whole domain.
+ * @property routes Path rules. The most specific matching one wins, the order does not matter.
+ * @property enabled A disabled domain is treated as if it did not exist.
+ * @property accessLog Writes requests of this domain to the access log.
  */
 @Serializable
-data class SiteConfig(
-    val domains: List<String>,
+data class DomainConfig(
+    val names: List<String>,
     val access: String? = null,
-    val locations: List<LocationConfig> = emptyList(),
+    val routes: List<RouteConfig> = emptyList(),
     val enabled: Boolean = true,
     val accessLog: Boolean = true,
 )
 
-/** How a location path is compared with the request path. */
+/** How a route path is compared with the request path. */
 @Serializable
 enum class MatchType {
     /** The path and everything below it, only at path boundaries: `/api` matches `/api` and `/api/x`, not `/apix`. */
@@ -293,19 +293,19 @@ enum class MatchType {
 }
 
 /**
- * A path rule of a site.
+ * A path rule of a domain.
  *
  * @property path Path starting with `/`.
  * @property match Prefix or exact match.
- * @property stripPrefix Removes the matched prefix before the request goes to an upstream.
+ * @property stripPrefix Removes the matched prefix before the request goes to a backend.
  * @property target What answers the request.
- * @property access Name of an access profile that replaces the one of the site completely.
- * @property requestHeaders Header changes for the request to the upstream.
+ * @property access Name of an access profile that replaces the one of the domain completely.
+ * @property requestHeaders Header changes for the request to the backend.
  * @property responseHeaders Header changes for the response to the visitor.
- * @property enabled A disabled location is ignored.
+ * @property enabled A disabled route is ignored.
  */
 @Serializable
-data class LocationConfig(
+data class RouteConfig(
     val path: String,
     val match: MatchType = MatchType.PREFIX,
     val stripPrefix: Boolean = false,
@@ -316,17 +316,17 @@ data class LocationConfig(
     val enabled: Boolean = true,
 )
 
-/** What answers a request of a location. */
+/** What answers a request of a route. */
 @Serializable
 sealed interface Target {
     /**
-     * Forwards to an upstream group.
+     * Forwards to a backend.
      *
-     * @property upstream Name of the group.
+     * @property backend Name of the backend.
      */
     @Serializable
-    @SerialName("upstream")
-    data class Upstream(val upstream: String) : Target
+    @SerialName("backend")
+    data class Backend(val backend: String) : Target
 
     /**
      * Serves files from a directory.
@@ -343,7 +343,7 @@ sealed interface Target {
      *
      * @property url Absolute target URL.
      * @property status `307` (temporary) or `301` (permanent).
-     * @property keepPath Appends the rest of the path after the location and the query to [url].
+     * @property keepPath Appends the rest of the path after the route and the query to [url].
      */
     @Serializable
     @SerialName("redirect")
@@ -360,9 +360,9 @@ sealed interface Target {
     data class Deny(val status: Int = 404, val html: String = "") : Target
 }
 
-/** What happens for a domain no site serves. */
+/** What happens for a domain no domain serves. */
 @Serializable
-sealed interface DefaultSite {
+sealed interface Fallback {
     /**
      * Serves files, by default the neutral page in `<dataDir>/www`.
      *
@@ -371,16 +371,16 @@ sealed interface DefaultSite {
      */
     @Serializable
     @SerialName("static")
-    data class Static(val root: String = "", val directoryListing: Boolean = false) : DefaultSite
+    data class Static(val root: String = "", val directoryListing: Boolean = false) : Fallback
 
     /**
-     * Forwards to an upstream group.
+     * Forwards to a backend.
      *
-     * @property upstream Name of the group.
+     * @property backend Name of the backend.
      */
     @Serializable
-    @SerialName("upstream")
-    data class Upstream(val upstream: String) : DefaultSite
+    @SerialName("backend")
+    data class Backend(val backend: String) : Fallback
 
     /**
      * Redirects to a fixed address. A redirect to the requested domain itself is refused, it would loop.
@@ -391,12 +391,12 @@ sealed interface DefaultSite {
      */
     @Serializable
     @SerialName("redirect")
-    data class Redirect(val url: String, val status: Int = 307, val keepPath: Boolean = true) : DefaultSite
+    data class Redirect(val url: String, val status: Int = 307, val keepPath: Boolean = true) : Fallback
 
     /** Answers with a neutral 404 page. */
     @Serializable
     @SerialName("notFound")
-    data object NotFound : DefaultSite
+    data object NotFound : Fallback
 
     /**
      * Answers with an empty `204` and closes the connection, so the visitor learns nothing about the server. No real
@@ -404,7 +404,7 @@ sealed interface DefaultSite {
      */
     @Serializable
     @SerialName("noResponse")
-    data object NoResponse : DefaultSite
+    data object NoResponse : Fallback
 }
 
 /** What a [HeaderRule] does. */
@@ -446,11 +446,11 @@ enum class WebhookEvent(val label: String) {
     @SerialName("certFailed")
     CERT_FAILED("Certificate failed"),
 
-    @SerialName("upstreamDown")
-    UPSTREAM_DOWN("Upstream server down"),
+    @SerialName("backendDown")
+    BACKEND_DOWN("Backend server down"),
 
-    @SerialName("upstreamUp")
-    UPSTREAM_UP("Upstream server up again"),
+    @SerialName("backendUp")
+    BACKEND_UP("Backend server up again"),
 
     @SerialName("ipBanned")
     IP_BANNED("IP banned"),
@@ -471,12 +471,12 @@ enum class WebhookEvent(val label: String) {
     INCUS_APPROVED("Incus container approved"),
 
     @SerialName("incusRemoved")
-    INCUS_REMOVED("Incus container route removed"),
+    INCUS_REMOVED("Incus container domain removed"),
 }
 
 /** Default body of a webhook, every placeholder as JSON field. */
 const val DEFAULT_WEBHOOK_TEMPLATE =
-    """{"event": "{{event}}", "subject": "{{subject}}", "body": "{{body}}", "time": "{{time}}", "site": "{{site}}"}"""
+    """{"event": "{{event}}", "subject": "{{subject}}", "body": "{{body}}", "time": "{{time}}", "domain": "{{domain}}"}"""
 
 /** Body of the KNot preset. */
 const val KNOT_WEBHOOK_TEMPLATE = """{"subject": "{{subject}}", "body": "{{body}}"}"""
@@ -488,7 +488,7 @@ const val KNOT_WEBHOOK_TEMPLATE = """{"subject": "{{subject}}", "body": "{{body}
  * @property url Target URL.
  * @property headers Extra request headers, e.g. `X-API-Key` for KNot. Without `Content-Type` Kovexy sends
  *   `application/json`.
- * @property template Body with placeholders `{{event}}`, `{{subject}}`, `{{body}}`, `{{time}}` and `{{site}}`.
+ * @property template Body with placeholders `{{event}}`, `{{subject}}`, `{{body}}`, `{{time}}` and `{{domain}}`.
  * @property events Events this target receives.
  * @property bundleWindow Events that can come in large numbers (IP banned, failed admin login) are sent at once the
  *   first time, further ones of the same kind within this window are collected into one message.
@@ -504,11 +504,11 @@ data class WebhookConfig(
 )
 
 /**
- * Timeouts and size limits. Not listed and therefore unlimited: waiting for the response headers of an upstream,
+ * Timeouts and size limits. Not listed and therefore unlimited: waiting for the response headers of a backend,
  * the request body and the lifetime of a WebSocket.
  *
- * @property upstreamConnectTimeout Time to connect to an upstream server.
- * @property upstreamKeepAlive Time an idle connection to an upstream server stays open for reuse.
+ * @property backendConnectTimeout Time to connect to a backend server.
+ * @property backendKeepAlive Time an idle connection to a backend server stays open for reuse.
  * @property clientIdleTimeout Time a client connection may be idle. Jetty has no separate timeout for reading the
  *   request headers, this one covers a client that stops sending them.
  * @property maxRequestHeaderBytes Size of the request headers.
@@ -522,8 +522,8 @@ data class WebhookConfig(
  */
 @Serializable
 data class LimitsConfig(
-    val upstreamConnectTimeout: TextDuration = 3.seconds,
-    val upstreamKeepAlive: TextDuration = 2.minutes,
+    val backendConnectTimeout: TextDuration = 3.seconds,
+    val backendKeepAlive: TextDuration = 2.minutes,
     val clientIdleTimeout: TextDuration = 5.minutes,
     val maxRequestHeaderBytes: Int = 16 * 1024,
     val maxConnections: Int = 10_000,
@@ -554,8 +554,8 @@ val DEFAULT_TRAP_PATHS: List<String> = listOf(
 )
 
 /**
- * A reusable access profile. It hangs on a site or a location, a location with its own profile replaces the one of
- * the site completely. The checks run in this order (Zoraxy): block lists, allow lists, exploit filter and trap paths,
+ * A reusable access profile. It hangs on a domain or a route, a route with its own profile replaces the one of
+ * the domain completely. The checks run in this order (Zoraxy): block lists, allow lists, exploit filter and trap paths,
  * rate limit, allowed methods, basic auth.
  *
  * @property name Unique name.
@@ -569,7 +569,7 @@ val DEFAULT_TRAP_PATHS: List<String> = listOf(
  * @property rateLimit Requests per second and IP, off without it.
  * @property allowedMethods Allowed HTTP methods, empty allows all. Others get 405.
  * @property basicAuth HTTP Basic Auth, off without it.
- * @property captcha Captcha before the site, off without it.
+ * @property captcha Captcha before the domain, off without it.
  */
 @Serializable
 data class AccessProfile(
@@ -602,7 +602,7 @@ enum class ExploitResponse(val status: Int) {
     @SerialName("badRequest")
     BAD_REQUEST(400),
 
-    /** An empty `204` and the connection closed, like the default site `noResponse`. */
+    /** An empty `204` and the connection closed, like the fallback `noResponse`. */
     @SerialName("drop")
     DROP(204),
 }
@@ -623,7 +623,7 @@ data class ExploitFilterConfig(
 )
 
 /**
- * Trap paths: whoever calls one is banned for all sites.
+ * Trap paths: whoever calls one is banned for all domains.
  *
  * @property enabled Traps on or off.
  * @property paths Path prefixes that trigger a ban.
@@ -674,7 +674,7 @@ data class BasicAuthUser(val name: String, val hash: String)
 /**
  * A request that needs no Basic Auth login, exactly one field is set (Zoraxy `BasicAuthExceptionRule`).
  *
- * @property pathPrefix Paths below this prefix, at path boundaries like locations.
+ * @property pathPrefix Paths below this prefix, at path boundaries like routes.
  * @property cidr Visitors from this IP or range.
  */
 @Serializable
@@ -693,7 +693,7 @@ enum class RecaptchaVersion {
 }
 
 /**
- * A Google reCAPTCHA before the site (Zoraxy `captcha.Config`). A solved captcha is valid for [sessionDuration], kept
+ * A Google reCAPTCHA before the domain (Zoraxy `captcha.Config`). A solved captcha is valid for [sessionDuration], kept
  * only in memory like Zoraxy, a restart asks once more.
  *
  * @property siteKey Google site key.

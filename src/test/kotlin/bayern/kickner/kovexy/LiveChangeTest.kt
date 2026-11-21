@@ -38,8 +38,8 @@ class LiveChangeTest {
         {
           "admin": { "port": ADMIN_PORT },
           $extra
-          "upstreams": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] } ],
-          "sites": [ { "domains": ["a.test", "b.test"], "locations": [ { "path": "/", "target": { "type": "upstream", "upstream": "app" } } ] } ]
+          "backends": [ { "name": "app", "servers": [ { "address": "127.0.0.1:${backend.port}" } ] } ],
+          "domains": [ { "names": ["a.test", "b.test"], "routes": [ { "path": "/", "target": { "type": "backend", "backend": "app" } } ] } ]
         }
     """.trimIndent()
 
@@ -98,7 +98,7 @@ class LiveChangeTest {
     @Test
     fun invalidFileChangesNothing(): Unit = runBlocking {
         val before = harness.store.current.version
-        harness.writeConfigByHand("""{ "sites": [ { "domains": ["UPPER.test"] } ], "typo": 1 }""", expectApplied = false)
+        harness.writeConfigByHand("""{ "domains": [ { "names": ["UPPER.test"] } ], "typo": 1 }""", expectApplied = false)
         assertEquals(before, harness.store.current.version)
         assertEquals(200, rawRequest(harness.ports.https, "a.test", "/x", tls = true).status)
         // A valid change by hand is applied: b.test disappears
@@ -132,12 +132,12 @@ class LiveChangeTest {
     }
 
     @Test
-    fun refusedWebSocketKeepsTheUpstreamStatus(): Unit = runBlocking {
+    fun refusedWebSocketKeepsTheBackendStatus(): Unit = runBlocking {
         val response = rawRequest(harness.ports.https, "a.test", "/ws-denied", tls = true, headers = listOf(
             "Upgrade" to "websocket", "Connection" to "Upgrade", "Sec-WebSocket-Version" to "13", "Sec-WebSocket-Key" to "dGhlIHNhbXBsZSBub25jZQ==",
         ))
-        assertEquals(403, response.status, "The visitor sees why the upstream refused")
-        assertTrue(harness.kovexy.upstreams.group("app")!!.servers.single().healthy, "A refusal is no connection error")
+        assertEquals(403, response.status, "The visitor sees why the backend refused")
+        assertTrue(harness.kovexy.backends.group("app")!!.servers.single().healthy, "A refusal is no connection error")
     }
 
     @Test

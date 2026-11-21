@@ -67,17 +67,17 @@ fun neutralPage(status: Int, title: String, text: String): String = "<!DOCTYPE h
     }
 }
 
-/** The page for an upstream that cannot be reached. */
+/** The page for a backend that cannot be reached. */
 fun badGatewayPage(): String = neutralPage(502, "Bad Gateway", "The service behind this address is not reachable right now. Please try again later.")
 
 /** The page for a path nobody serves. */
 fun notFoundPage(): String = neutralPage(404, "Not Found", "There is nothing at this address.")
 
-/** The default page for domains no site serves, written to `<dataDir>/www/index.html` on the first start. */
+/** The default page for domains no domain serves, written to `<dataDir>/www/index.html` on the first start. */
 fun defaultIndexPage(): String = "<!DOCTYPE html>\n" + createHTML().html {
     frame("Kovexy") {
         h1 { +"It works" }
-        p { +"This server runs Kovexy, but no site is set up for this address yet." }
+        p { +"This server runs Kovexy, but no domain is set up for this address yet." }
     }
 }
 
