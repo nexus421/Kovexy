@@ -98,7 +98,7 @@ private suspend fun ApplicationCall.incusPage(kovexy: Kovexy, problems: List<Str
             if (isRoot().not()) notice("warn", "Kovexy does not run as root. Discovery needs root, the Incus socket gives root access to the host.")
             form(action = "/incus/settings", method = FormMethod.post, classes = "form") {
                 versionField(version)
-                checkField("Discover Incus containers", "enabled", settings.enabled, "only reads, never changes an instance")
+                checkField("Discover Incus containers", "enabled", settings.enabled, "only reads, never changes an instance", help = "incus.enabled")
                 textField("Socket", "socket", settings.socket, required = false)
                 textField("Projects", "projects", settings.projects.joinToString(" "), required = false,
                     hint = "Only instances of these Incus projects count. In restricted projects non-admins may create instances and set keys.")

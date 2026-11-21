@@ -66,6 +66,17 @@ class AdminWebTest {
     }
 
     @Test
+    fun formsCarryHelpTexts(): Unit = run {
+        val cookie = login()
+        val settings = get("/settings", cookie).text
+        assertTrue(settings.contains("class=\"help-btn\""), "The settings fields have a question mark")
+        assertTrue(settings.contains("Largest size of all request headers") || settings.contains("largest size of all request headers"), "With the text behind it")
+        // The same field name on two pages must not show the text of the other page
+        assertTrue(get("/webhooks/new", cookie).text.contains("The address Kovexy sends the POST request to."))
+        assertTrue(get("/domains/new", cookie).text.contains("The domain names this entry serves"))
+    }
+
+    @Test
     fun loginLockoutAndSession(): Unit = run {
         assertEquals(401, post("/login", form("password" to "wrong")).status)
         val cookie = login()

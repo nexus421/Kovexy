@@ -191,9 +191,9 @@ private suspend fun ApplicationCall.backendForm(kovexy: Kovexy, name: String?, g
         card {
             form(action = action, method = FormMethod.post, classes = "form") {
                 versionField(version)
-                textField("Name", "name", group.name, hint = "Routes refer to the backend by this name. Renaming updates them.")
+                textField("Name", "name", group.name, help = "backend.name", hint = "Routes refer to the backend by this name. Renaming updates them.")
                 fieldSet {
-                    legend { +"Servers" }
+                    legend { +"Servers"; helpButton("servers", "Servers") }
                     p("muted small") {
                         +"Requests are spread by weight at random. Weight 0 makes a backup server that only gets requests when no other server is up. "
                         +"Empty rows are ignored, clear the address to remove a server."

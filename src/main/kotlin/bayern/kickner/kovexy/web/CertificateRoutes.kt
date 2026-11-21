@@ -88,7 +88,7 @@ private suspend fun ApplicationCall.certificatePage(kovexy: Kovexy, problems: Li
             }
             form(action = "/certificates/acme", method = FormMethod.post, classes = "form") {
                 versionField(version)
-                textField("Directory", "directory", acme.directory, hint = "Let's Encrypt production by default.")
+                textField("Directory", "directory", acme.directory, hint = "Let's Encrypt production by default.", help = "acme.directory")
                 checkField("Use Let's Encrypt staging", "staging", acme.staging, "for tests, browsers do not trust these certificates")
                 textField("Contact mail", "email", acme.email, required = false, hint = "Optional.")
                 div("btn-row") { submit("Save ACME settings") }

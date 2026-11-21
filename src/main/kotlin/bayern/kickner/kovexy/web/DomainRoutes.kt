@@ -235,7 +235,7 @@ private suspend fun ApplicationCall.domainForm(kovexy: Kovexy, index: Int?, doma
             form(action = if (index == null) "/domains/new" else "/domains/$index", method = FormMethod.post, classes = "form") {
                 versionField(version)
                 textAreaField("Domain names", "names", domain.names.joinToString("\n"), rows = 3, hint = "One per line, exact names like example.com and www.example.com. No wildcards.", required = true)
-                checkField("Enabled", "enabled", domain.enabled)
+                checkField("Enabled", "enabled", domain.enabled, help = "domain.enabled")
                 checkField("Write requests to the access log", "accessLog", domain.accessLog)
                 profileSelect(kovexy, domain.access, "No profile, every visitor gets in", "A route with its own profile replaces it completely.")
                 if (index == null) {
@@ -379,10 +379,10 @@ private suspend fun ApplicationCall.routeForm(kovexy: Kovexy, domain: Int, index
             form(action = "/domains/$domain/routes/${index ?: "new"}", method = FormMethod.post, classes = "form") {
                 versionField(version)
                 div("grid-2") {
-                    textField("Path", "path", form.path, hint = "Starts with /, a prefix without trailing slash.")
+                    textField("Path", "path", form.path, hint = "Starts with /, a prefix without trailing slash.", help = "route.path")
                     selectField("Match", "match", form.match, listOf("prefix" to "Prefix: the path and everything below it", "exact" to "Exact: only this path"))
                 }
-                checkField("Enabled", "enabled", form.enabled)
+                checkField("Enabled", "enabled", form.enabled, help = "route.enabled")
                 profileSelect(kovexy, form.access.ifEmpty { null }, "Profile of the domain", "An own profile replaces the one of the domain completely.")
                 selectField("Target", "targetType", form.targetType, listOf("backend" to "Backend", "static" to "Static files", "redirect" to "Redirect", "deny" to "Block"))
                 fieldSet("target-fields target-backend") {
@@ -397,7 +397,7 @@ private suspend fun ApplicationCall.routeForm(kovexy: Kovexy, domain: Int, index
                 }
                 fieldSet("target-fields target-redirect") {
                     legend { +"Redirect" }
-                    textField("Target URL", "url", form.url, placeholder = "https://example.com", required = false)
+                    textField("Target URL", "url", form.url, placeholder = "https://example.com", required = false, help = "redirectUrl")
                     selectField("Status", "redirectStatus", form.redirectStatus, listOf("307" to "307 temporary", "301" to "301 permanent"))
                     checkField("Keep the path and query", "keepPath", form.keepPath, "/old/page?x=1 goes to <url>/page?x=1")
                 }

@@ -144,15 +144,15 @@ private suspend fun ApplicationCall.webhookForm(kovexy: Kovexy, name: String?, h
             form(action = action, method = FormMethod.post, classes = "form") {
                 versionField(version)
                 div("grid-2") {
-                    textField("Name", "name", hook.name)
-                    textField("URL", "url", hook.url, placeholder = "https://knot.example.com/hook")
+                    textField("Name", "name", hook.name, help = "webhook.name")
+                    textField("URL", "url", hook.url, placeholder = "https://knot.example.com/hook", help = "webhook.url")
                 }
-                textAreaField("Headers", "headers", hook.headers.entries.joinToString("\n") { "${it.key}: ${it.value}" }, rows = 2,
+                textAreaField("Headers", "headers", hook.headers.entries.joinToString("\n") { "${it.key}: ${it.value}" }, rows = 2, help = "webhook.headers",
                     hint = "One per line, Name: value. Without Content-Type Kovexy sends application/json.")
                 textAreaField("Template", "template", hook.template, rows = 4, required = true,
                     hint = "Placeholders: {{event}}, {{subject}}, {{body}}, {{time}}, {{domain}}. Values are escaped for JSON strings.")
                 fieldSet {
-                    legend { +"Events" }
+                    legend { +"Events"; helpButton("webhook.events", "Events") }
                     WebhookEvent.entries.forEach { event ->
                         checkField(event.label, "event.${event.key}", event in hook.events, if (event in BUNDLED_EVENTS) "bundled" else null)
                     }

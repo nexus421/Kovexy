@@ -329,7 +329,7 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
         card {
             form(action = action, method = FormMethod.post, classes = "form") {
                 versionField(version)
-                textField("Name", "name", profile.name, hint = "Domains and routes refer to the profile by this name. Renaming updates them.")
+                textField("Name", "name", profile.name, help = "profile.name", hint = "Domains and routes refer to the profile by this name. Renaming updates them.")
                 fold("Block list", (profile.denyIps.size + profile.denyCountries.size).let { if (it == 0) "empty" else "$it entries" }, open = problems.isNotEmpty()) {
                     p("muted small") { +"Matching visitors get 403. Countries only count when the country of the IP is known." }
                     textAreaField("IPs and ranges", "denyIps", profile.denyIps.joinToString("\n"), rows = 2, hint = "One per line, e.g. 203.0.113.7 or 198.51.100.0/24")
@@ -414,7 +414,7 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
                     div("grid-2") {
                         textField("reCAPTCHA site key", "siteKey", captcha?.siteKey.orEmpty(), required = false)
                         label("field") {
-                            span { +"reCAPTCHA secret key" }
+                            span { +"reCAPTCHA secret key"; helpButton("secretKey", "reCAPTCHA secret key") }
                             input(InputType.password, name = "secretKey") {
                                 attributes["autocomplete"] = "off"
                                 placeholder = if (captcha?.secretKey.isNullOrEmpty()) "secret key" else "unchanged"
@@ -439,7 +439,7 @@ private suspend fun ApplicationCall.profileForm(kovexy: Kovexy, name: String?, p
  * summary current, without it the list still works.
  */
 private fun FlowContent.countrySelect(label: String, name: String, selected: List<String>) = div("field") {
-    span { +label }
+    span { +label; helpButton(name, label) }
     div("country-picker") {
         attributes["data-country-picker"] = "true"
         details {

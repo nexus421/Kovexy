@@ -7,7 +7,8 @@ Fallback, Incus), Protection (Access, Security) and System (Webhooks, Audit, Set
 sidebar, on a phone the button "Menu" opens it. The number tiles on the status page link to the page behind them. Long forms
 fold their sections away (the note beside a title shows the state, for example "on" or "3 entries"), the Save button
 stays at the lower edge of the window while the form is longer than the screen. The OIDC fields on the settings page only show
-while the login mode uses OIDC.
+while the login mode uses OIDC. A small question mark next to a field shows, on hover or keyboard focus (a tap on a phone),
+what the field is, what a change does and what is recommended.
 
 | Page | What it does |
 |---|---|

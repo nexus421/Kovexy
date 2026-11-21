@@ -214,7 +214,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                 form(action = "/settings/login", method = FormMethod.post, classes = "form") {
                     versionField(version)
                     fieldSet {
-                        legend { +"Login mode" }
+                        legend { +"Login mode"; helpButton("loginMode", "Login mode") }
                         listOf(
                             LoginMode.PASSWORD to "Password only",
                             LoginMode.OIDC to "OIDC only",
@@ -237,7 +237,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                         div("grid-2") {
                             textField("Client ID", "clientId", v("clientId", oidc?.clientId.orEmpty()), required = false)
                             label("field") {
-                                span { +"Client secret" }
+                                span { +"Client secret"; helpButton("clientSecret", "Client secret") }
                                 input(InputType.password, name = "clientSecret") {
                                     attributes["autocomplete"] = "new-password"
                                     attributes["aria-label"] = "Client secret"

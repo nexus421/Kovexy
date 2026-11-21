@@ -56,6 +56,25 @@
     filter.addEventListener('keydown', function (event) { if (event.key === 'Enter') event.preventDefault(); });
   });
 
+  // Help texts: keep them inside the window. They open to the right of the question mark, a text that would run past the
+  // right or left edge is moved back.
+  document.querySelectorAll('.help').forEach(function (help) {
+    const pop = help.querySelector('.help-pop');
+    if (!pop) return;
+    function place() {
+      requestAnimationFrame(function () {
+        pop.style.left = '';
+        const rect = pop.getBoundingClientRect();
+        const margin = 12;
+        const width = document.documentElement.clientWidth;
+        if (rect.right > width - margin) pop.style.left = (-8 - (rect.right - (width - margin))) + 'px';
+        else if (rect.left < margin) pop.style.left = (-8 + (margin - rect.left)) + 'px';
+      });
+    }
+    help.addEventListener('mouseenter', place);
+    help.addEventListener('focusin', place);
+  });
+
   // Selects that submit their form on change: <select data-autosubmit>
   document.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
     select.addEventListener('change', function () { if (select.form) select.form.requestSubmit(); });

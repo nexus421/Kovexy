@@ -327,8 +327,9 @@ fun FlowContent.textField(
     required: Boolean = true,
     placeholder: String? = null,
     type: InputType = InputType.text,
+    help: String? = null,
 ) = label("field") {
-    span { +label }
+    span { +label; helpButton(help ?: name, label) }
     input(type = type, name = name) {
         this.value = value
         this.required = required
@@ -352,9 +353,9 @@ fun FlowContent.passwordField(label: String, name: String, autocomplete: String,
 }
 
 /** A labeled multi-line input. */
-fun FlowContent.textAreaField(label: String, name: String, value: String = "", rows: Int = 4, hint: String? = null, required: Boolean = false) =
+fun FlowContent.textAreaField(label: String, name: String, value: String = "", rows: Int = 4, hint: String? = null, required: Boolean = false, help: String? = null) =
     label("field") {
-        span { +label }
+        span { +label; helpButton(help ?: name, label) }
         textArea(rows = rows.toString()) {
             this.name = name
             this.required = required
@@ -367,10 +368,11 @@ fun FlowContent.textAreaField(label: String, name: String, value: String = "", r
     }
 
 /** A checkbox with its label text. */
-fun FlowContent.checkField(label: String, name: String, checked: Boolean, hint: String? = null) = label("check") {
+fun FlowContent.checkField(label: String, name: String, checked: Boolean, hint: String? = null, help: String? = null) = label("check") {
     checkBoxInput(name = name) { this.checked = checked }
     span {
         +label
+        helpButton(help ?: name, label)
         if (hint != null) {
             +" "
             span("hint muted small") { +hint }
@@ -379,9 +381,9 @@ fun FlowContent.checkField(label: String, name: String, checked: Boolean, hint: 
 }
 
 /** A labeled select. [options] are value to label. */
-fun FlowContent.selectField(label: String, name: String, selected: String, options: List<Pair<String, String>>, hint: String? = null, autosubmit: Boolean = false) =
+fun FlowContent.selectField(label: String, name: String, selected: String, options: List<Pair<String, String>>, hint: String? = null, autosubmit: Boolean = false, help: String? = null) =
     label("field") {
-        span { +label }
+        span { +label; helpButton(help ?: name, label) }
         select {
             this.name = name
             if (autosubmit) attributes["data-autosubmit"] = ""

@@ -50,7 +50,7 @@ private suspend fun ApplicationCall.fallbackForm(kovexy: Kovexy, domain: Fallbac
         card {
             form(action = "/fallback", method = FormMethod.post, classes = "form") {
                 versionField(version)
-                selectField("Answer", "targetType", type, listOf(
+                selectField("Answer", "targetType", type, help = "fallback.type", options = listOf(
                     "static" to "Static files",
                     "backend" to "Forward to a backend",
                     "redirect" to "Redirect to a fixed address",
@@ -69,7 +69,7 @@ private suspend fun ApplicationCall.fallbackForm(kovexy: Kovexy, domain: Fallbac
                 }
                 fieldSet("target-fields target-redirect") {
                     legend { +"Redirect" }
-                    textField("Target URL", "url", (domain as? Fallback.Redirect)?.url.orEmpty(), placeholder = "https://example.com", required = false,
+                    textField("Target URL", "url", (domain as? Fallback.Redirect)?.url.orEmpty(), help = "redirectUrl", placeholder = "https://example.com", required = false,
                         hint = "A redirect to the requested domain itself is refused, it would loop.")
                     selectField("Status", "redirectStatus", ((domain as? Fallback.Redirect)?.status ?: 307).toString(), listOf("307" to "307 temporary", "301" to "301 permanent"))
                     checkField("Keep the path and query", "keepPath", (domain as? Fallback.Redirect)?.keepPath ?: true)
