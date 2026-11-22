@@ -366,8 +366,9 @@ class ProxyHandler(
                 respondText(call, trace, notFoundPage(), ContentType.Text.Html, HttpStatusCode.NotFound)
                 return
             }
-            val answer = dyndns.answer(call.request.httpMethod.value, call.request.headers[HttpHeaders.Authorization], rawUri.substringAfter('?', ""), trace.clientIp)
+            val answer = dyndns.answer(call.request.httpMethod.value, call.request.headers[HttpHeaders.Authorization], rawUri.substringAfter('?', ""), trace.clientIp, domain.name)
             trace.reason = answer.reason
+            if (answer.status == 405) call.response.headers.append(HttpHeaders.Allow, "GET")
             if (answer.authFailed) {
                 trace.block = BlockKind.BASIC_AUTH
                 call.response.headers.append(HttpHeaders.WWWAuthenticate, "Basic realm=\"dyndns\", charset=\"UTF-8\"")

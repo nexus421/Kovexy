@@ -89,12 +89,14 @@ stays reachable from home although the IP changes, without an external DynDNS pr
 1. Add a domain and tick "Use for DynDNS". It answers only `/nic/update`, everything else gets a 404, and it has no
    routes. Use a name of its own, for example `dyndns.example.com`.
 2. Under DynDNS add a client: a name and the access profiles. The page shows the password **once**, together with the
-   ready settings for the FRITZ!Box (*Internet, Freigaben, DynDNS, Benutzerdefiniert*) and for other clients. A lost
+   ready settings for the FRITZ!Box (*Internet, Permit Access, DynDNS, User-defined*, in German *Internet, Freigaben,
+   DynDNS, Benutzerdefiniert*) and for other clients. A lost
    password is replaced with "New password".
 3. Put the settings into the router. The router now reports whenever its IP changes.
 
-Each update replaces all addresses of that client. A client that sends IPv4 and IPv6 in separate requests (inadyn,
-pfSense) should be two clients. Parameters: `myip` (IPv4 and IPv6, comma separated, FRITZ!Box `<ipaddr>,<ip6lanprefix>`),
+Each update replaces all addresses of that client. **One login per device:** never put the same client into a second
+device, it would overwrite the addresses of the first. A device that sends IPv4 and IPv6 in separate requests (pfSense
+with the services "Custom" and "Custom (v6)") gets two clients, one per family. Parameters: `myip` (IPv4 and IPv6, comma separated, FRITZ!Box `<ipaddr>,<ip6lanprefix>`),
 `myipv4`, `ip`, `myipv6`, `myip6`, `ipv6`. Without one the source address is used. IPv4 must be a public single
 address, IPv6 a global host or a prefix from /48 to /128 (host bits are cleared).
 
@@ -104,11 +106,17 @@ address, IPv6 a global host or a prefix from /48 to /128 (host bits are cleared)
 | `nochg <ip>` | 200 | Same addresses as before |
 | `badauth` | 401 | Wrong name or password |
 | `badrequest <reason>` | 400 | Invalid or private address, broken query |
+| `badrequest` | 405 | Another method than `GET` |
+| `911` | 500 | The report could not be stored, nothing changed |
+
+A profile that DynDNS clients use fails closed: while none of them has an address (not reported yet, the state file
+was lost) and the profile has no `allowIps` of its own, nobody gets in by IP. Its countries and "Allow local addresses"
+still let their visitors in.
 
 Two things the admin owns:
 
-- A profile whose allow list is empty lets everybody in. That includes a profile that only has DynDNS clients and none
-  of them has reported yet.
+- A profile without clients and with an empty allow list lets everybody in. So deleting the last client of a profile
+  that has no allow list of its own, or unticking that profile, opens it. The client page warns before that.
 - Do not give the DynDNS domain a profile with an allow list or a DynDNS client. The routers would be locked out
   before they can report.
 

@@ -16,7 +16,8 @@ const val DYNDNS_UPDATE_PATH = "/nic/update"
  * @property status HTTP status.
  * @property body The dyndns2 answer, plain text.
  * @property reason For the access log, never holds a password or a query value.
- * @property authFailed Whether the login was wrong, the proxy then adds `WWW-Authenticate` and counts a failed login.
+ * @property authFailed Whether the login was wrong, the proxy then adds `WWW-Authenticate` and marks the request as a
+ *   failed Basic Auth login in the access log.
  */
 data class DyndnsAnswer(val status: Int, val body: String, val reason: String, val authFailed: Boolean = false)
 
@@ -29,16 +30,24 @@ data class DyndnsAnswer(val status: Int, val body: String, val reason: String, v
  * @param config The active config.
  * @param store Where the reports are kept.
  * @param onChange Called when the reported addresses of a client changed, the routing table is rebuilt there.
+ * @param onFailedLogin Called with the client IP and the domain for a wrong login, it becomes a security event there.
  */
 class DyndnsEndpoint(
     private val config: () -> KovexyConfig,
     private val store: DyndnsStore,
     private val onChange: () -> Unit,
+    private val onFailedLogin: (clientIp: String, domain: String) -> Unit = { _, _ -> },
 ) {
-    /** Answers one request. Never throws. [rawQuery] is the query string as sent, without `?`. */
-    fun answer(method: String, authorization: String?, rawQuery: String, clientIp: String): DyndnsAnswer {
+    /**
+     * Answers one request. Never throws. [rawQuery] is the query string as sent, without `?`, [domain] the name of the
+     * domain for the security events.
+     */
+    fun answer(method: String, authorization: String?, rawQuery: String, clientIp: String, domain: String = ""): DyndnsAnswer {
         if (method != "GET") return DyndnsAnswer(405, "badrequest", "dyndns wrong method")
-        val client = authenticate(authorization) ?: return DyndnsAnswer(401, "badauth", "dyndns wrong login", authFailed = true)
+        val client = authenticate(authorization) ?: run {
+            onFailedLogin(clientIp, domain)
+            return DyndnsAnswer(401, "badauth", "dyndns wrong login", authFailed = true)
+        }
         val query = parseQuery(rawQuery) ?: return DyndnsAnswer(400, "badrequest invalid query", "dyndns invalid query")
         val reported = when (val found = addressesFromQuery(query)) {
             is ResultOf2.Failure -> return DyndnsAnswer(400, "badrequest ${clean(found.value)}", "dyndns invalid address")
@@ -49,7 +58,11 @@ class DyndnsEndpoint(
             is ResultOf2.Failure -> return DyndnsAnswer(400, "badrequest ${clean(source.value)}", "dyndns invalid source address")
             is ResultOf2.Success -> listOf(source.value)
         }
-        val changed = store.report(client, addresses)
+        // 911 is the dyndns2 answer for a problem on the server side
+        val changed = when (val stored = store.report(client, addresses)) {
+            is ResultOf2.Failure -> return DyndnsAnswer(500, "911", "dyndns ${stored.value}")
+            is ResultOf2.Success -> stored.value
+        }
         if (changed) onChange()
         val shown = addresses.joinToString(",") { it.display }
         return if (changed) DyndnsAnswer(200, "good $shown", "dyndns good") else DyndnsAnswer(200, "nochg $shown", "dyndns nochg")

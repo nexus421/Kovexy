@@ -208,21 +208,24 @@ private fun profileSummary(p: AccessProfile): String = buildList {
     if (p.basicAuth != null) add("Basic Auth")
 }.ifEmpty { listOf(t("no rules")) }.joinToString(", ")
 
-/** Domains and routes that use the profile [name]. */
+/** Domains, routes and DynDNS clients that use the profile [name]. */
 private fun usedBy(config: KovexyConfig, name: String): List<String> = config.domains.flatMap { domain ->
     val label = domain.names.firstOrNull().orEmpty()
     listOfNotNull(label.takeIf { domain.access == name }) + domain.routes.filter { it.access == name }.map { "$label${it.path}" }
-}
+} + config.dyndnsClients.filter { name in it.profiles }.map { t("DynDNS client {0}", it.name) }
 
-/** Points every domain and route that uses [old] to [new], so renaming a profile keeps them protected. */
+/** Points every domain, route and DynDNS client that uses [old] to [new], so renaming a profile keeps them working. */
 private fun KovexyConfig.renameProfile(old: String, new: String): KovexyConfig {
     if (old == new) return this
-    return copy(domains = domains.map { domain ->
-        domain.copy(
-            access = if (domain.access == old) new else domain.access,
-            routes = domain.routes.map { if (it.access == old) it.copy(access = new) else it },
-        )
-    })
+    return copy(
+        domains = domains.map { domain ->
+            domain.copy(
+                access = if (domain.access == old) new else domain.access,
+                routes = domain.routes.map { if (it.access == old) it.copy(access = new) else it },
+            )
+        },
+        dyndnsClients = dyndnsClients.map { client -> client.copy(profiles = client.profiles.map { if (it == old) new else it }) },
+    )
 }
 
 /** Splits a text area into its non-empty lines, also accepting commas and spaces as separators. */

@@ -410,7 +410,7 @@ form:has(select[name=targetType] option[value=deny]:checked) .target-deny { disp
   table.stack-mobile, table.stack-mobile tbody, table.stack-mobile tr, table.stack-mobile td { display: block; width: 100%; }
   table.stack-mobile tr { border-bottom: 1px solid var(--border); padding: 8px 0; }
   table.stack-mobile td { border: 0; padding: 3px 0; text-align: left; white-space: normal; }
-  table.stack-mobile td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 110px; color: var(--muted); font-size: 12.5px; }
+  table.stack-mobile td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 110px; margin-right: 10px; color: var(--muted); font-size: 12.5px; }
   table.stack-mobile td.actions { text-align: left; }
   .container { padding: 16px 12px 40px; }
 }

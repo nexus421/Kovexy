@@ -16,7 +16,7 @@ Kovexy gets what the plugin [zoraxy-dyndns](../../../../../zoraxy-dyndns) does f
 ## Non-goals and accepted limits
 
 - No modes (`enforce`, `warn`, `open_when_empty`), no warnings page. `allowIps` stays as it is.
-- No special protection for an empty allow list. A profile whose `allowIps` and `allowCountries` are both empty lets everybody in, also while its DynDNS clients have not reported yet. The admin owns that, the docs say so.
+- ~~No special protection for an empty allow list. A profile whose `allowIps` and `allowCountries` are both empty lets everybody in, also while its DynDNS clients have not reported yet. The admin owns that, the docs say so.~~ **Replaced on 22.11.2026:** a profile that DynDNS clients use fails closed while it has no address at all (internal entry `0.0.0.0/32` in the routing table), its countries and `allowLocal` still apply. The client page warns when deleting the client or unticking the profile would open a profile. See `docs/usage.md` and KONZEPT section 2.
 - Putting a profile with an allow list (including a DynDNS client) on the DynDNS domain locks the routers out. Accepted, the docs and the domain form say so.
 - No own activity log and no "last answer" per client (KISS). The access log already shows every request to `/nic/update` with its status, a wrong password shows there as 401.
 - No host name resolution, no second IPv4 or IPv6 per update, no per-client rate limit (the profile's rate limit applies).

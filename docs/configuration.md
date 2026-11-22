@@ -140,8 +140,12 @@ The addresses a client reports are **not** in `kovexy.json`. They are in `<dataD
 atomically, a missing or broken file means nobody has reported yet), so a router update never changes the config
 version, the backups or the audit log. The allow list of a profile is `allowIps` plus the addresses of all clients
 that use it, rebuilt with the routing table on every change. The entries in the config are never touched, and a
-client only ever changes its own addresses (an address two clients report stays until both stop). Reports of a
-client that is no longer in the config are ignored.
+client only ever changes its own addresses (an address two clients report stays until both stop). Stored reports
+count right from the start, not only after the next update. The report of a client that is no longer in the config
+is deleted when that config is applied, so a client added again under the same name starts without addresses.
+A profile that clients use but that ends up with no address at all gets the internal entry `0.0.0.0/32` (no visitor
+comes from there), so it fails closed instead of letting everybody in. That entry is only in the routing table, never
+in `kovexy.json`.
 
 ### `fallback`
 

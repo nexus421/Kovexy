@@ -49,8 +49,10 @@ import bayern.kickner.kovexy.access.GOOGLE_SITEVERIFY
 import bayern.kickner.kovexy.access.GoogleVerifier
 import bayern.kickner.kovexy.proxy.ReservedPaths
 import bayern.kickner.kovexy.dyndns.DYNDNS_STATE_FILE
+import bayern.kickner.kovexy.dyndns.DYNDNS_UPDATE_PATH
 import bayern.kickner.kovexy.dyndns.DyndnsEndpoint
 import bayern.kickner.kovexy.dyndns.DyndnsStore
+import bayern.kickner.kovexy.dyndns.dyndnsClientNames
 import bayern.kickner.kovexy.dyndns.withDyndnsAllowIps
 import bayern.kickner.kovexy.incus.IncusDecisions
 import bayern.kickner.kovexy.incus.IncusDiscovery
@@ -62,6 +64,7 @@ import bayern.kickner.kovexy.access.RateLimiter
 import bayern.kickner.kovexy.audit.Actor
 import bayern.kickner.kovexy.audit.AuditAction
 import bayern.kickner.kovexy.audit.AuditLog
+import bayern.kickner.kovexy.audit.SecurityEventType
 import bayern.kickner.kovexy.audit.SecurityEvents
 import bayern.kickner.kovexy.audit.configDiff
 import bayern.kickner.kovexy.auth.OidcClient
@@ -149,9 +152,12 @@ class Kovexy internal constructor(
         }
     }
 
-    /** The routing table of the active config plus approved Incus containers, swapped in one step on every change. */
+    /**
+     * The routing table of the active config plus approved Incus containers and the addresses reported by DynDNS
+     * clients, swapped in one step on every change.
+     */
     @Volatile
-    var routing: RoutingTable = RoutingTable(configStore.current.config)
+    var routing: RoutingTable = RoutingTable(withDyndnsAllowIps(configStore.current.config, dyndns))
         private set
 
     /**
@@ -160,6 +166,8 @@ class Kovexy internal constructor(
      */
     @Synchronized
     fun rebuildRouting() {
+        // A deleted client takes its addresses with it, also when it is added again under the same name
+        dyndns.retain(config.dyndnsClientNames())
         val effective = withDyndnsAllowIps(withIncusRoutes(config, incus.claims), dyndns)
         backends.reconcile(effective.backends)
         // Clients of hosts that no backend uses any more (an edited address, an Incus container with a new IP) go away
@@ -185,7 +193,9 @@ class Kovexy internal constructor(
         bans = bans,
         access = access,
         reserved = ReservedPaths(captcha, security),
-        dyndns = DyndnsEndpoint({ config }, dyndns, ::rebuildRouting),
+        dyndns = DyndnsEndpoint({ config }, dyndns, ::rebuildRouting) { ip, domain ->
+            security.record(SecurityEventType.BASIC_AUTH_FAILED, ip, domain, DYNDNS_UPDATE_PATH)
+        },
         geo = geo,
         adminPort = { server.adminPort },
         clock = clock,
@@ -210,6 +220,8 @@ class Kovexy internal constructor(
 
     init {
         backends.reconcile(config.backends)
+        // Reports of clients that left the config while Kovexy was stopped
+        dyndns.retain(config.dyndnsClientNames())
         configStore.onChange { old, new, source, actor -> apply(old, new, source, actor) }
         configStore.onInvalid { problems ->
             webhooks.emit(Event(WebhookEvent.CONFIG_INVALID, "Configuration file rejected", problems.joinToString("\n"), time = clock()))

@@ -45,7 +45,7 @@ fun Route.dyndnsRoutes(kovexy: Kovexy) {
             pageHeader("DynDNS", "Routers report their current IP, Kovexy adds it to the allow list of the access profiles you pick.") {
                 linkButton("/dyndns/new", "Add client", "primary")
             }
-            if (hosts.isEmpty()) notice("warning", "No domain is used for DynDNS yet. Tick \"Use for DynDNS\" on a domain, clients report to it.")
+            if (hosts.isEmpty()) notice("warn", "No domain is used for DynDNS yet. Tick \"Use for DynDNS\" on a domain, clients report to it.")
             else p("muted") { +t("Clients report to {0}.", hosts.joinToString(", ")) }
             card {
                 if (config.dyndnsClients.isEmpty()) p("muted") { +t("No clients yet.") }
@@ -72,7 +72,8 @@ fun Route.dyndnsRoutes(kovexy: Kovexy) {
                 }
             }
             card("Good to know", "gap-top") {
-                p("muted") { +t("A profile whose allow list is empty lets everybody in, also while its clients have not reported yet.") }
+                p("muted") { +t("A profile with DynDNS clients lets nobody in by IP until one of them has reported, its countries and local addresses still count.") }
+                p("muted") { +t("Use every login on one device only. A second device with the same login overwrites the addresses of the first.") }
                 p("muted") { +t("Do not give the access profile of the DynDNS domain an allow list or a client. The routers could not report any more.") }
             }
         }
@@ -137,6 +138,13 @@ private suspend fun ApplicationCall.clientForm(kovexy: Kovexy, name: String?, cl
     page(title, session, Nav.DYNDNS, status = if (problems.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest) {
         pageHeader(title) { linkButton("/dyndns", "All clients", "ghost") }
         if (problems.isNotEmpty()) problems("Not saved:", problems)
+        if (name != null) {
+            val opens = onlyRestrictedBy(kovexy, name)
+            if (opens.isNotEmpty()) {
+                // Not through notice(), it translates its text itself and this one carries a placeholder
+                div("notice warn") { +t("Without this client everybody gets into {0}. No other client uses it and it has no allow list of its own, so deleting the client or unticking the profile opens it.", opens.joinToString(", ")) }
+            }
+        }
         card {
             form(action = action, method = FormMethod.post, classes = "form") {
                 versionField(version)
@@ -167,18 +175,32 @@ private suspend fun ApplicationCall.clientForm(kovexy: Kovexy, name: String?, cl
     }
 }
 
+/**
+ * The profiles that only the client [name] keeps closed: no other client uses them and they have neither `allowIps`
+ * nor `allowCountries` of their own. Without the client they let everybody in.
+ */
+private fun onlyRestrictedBy(kovexy: Kovexy, name: String): List<String> {
+    val config = kovexy.config
+    val client = config.dyndnsClients.firstOrNull { it.name == name } ?: return emptyList()
+    return config.accessProfiles.filter { profile ->
+        profile.name in client.profiles && profile.allowIps.isEmpty() && profile.allowCountries.isEmpty() &&
+            config.dyndnsClients.none { it.name != name && profile.name in it.profiles }
+    }.map { it.name }
+}
+
 /** Shows the password once, together with the settings for the router. */
 private suspend fun ApplicationCall.passwordPage(kovexy: Kovexy, name: String, password: String) {
     val host = kovexy.config.domains.firstOrNull { it.dyndns && it.enabled }?.names?.firstOrNull()
     page("DynDNS", session, Nav.DYNDNS) {
         pageHeader(t("DynDNS client {0}", name)) { linkButton("/dyndns", "All clients", "ghost") }
-        notice("warning", "This is the only time the password is shown. Copy it into the router now.")
-        if (host == null) notice("warning", "No domain is used for DynDNS yet. Tick \"Use for DynDNS\" on a domain and use its name below.")
+        notice("warn", "This is the only time the password is shown. Copy it into the router now.")
+        notice("warn", "Use this login on one device only, add a client for every further device.")
+        if (host == null) notice("warn", "No domain is used for DynDNS yet. Tick \"Use for DynDNS\" on a domain and use its name below.")
         card("Password") {
             copyBlock(password)
         }
         card("FRITZ!Box", "gap-top") {
-            p("muted") { +"Internet, Freigaben, DynDNS, Benutzerdefiniert" }
+            p("muted") { +t("Internet, Permit Access, DynDNS, User-defined") }
             copyBlock("https://<username>:<pass>@${host ?: "dyndns.example.com"}/nic/update?hostname=<domain>&myip=<ipaddr>,<ip6lanprefix>")
             keyValues("Domain name" to (host ?: "dyndns.example.com"), "User name" to name)
         }

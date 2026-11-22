@@ -240,8 +240,9 @@ class Harness(
     clock: () -> Long = System::currentTimeMillis,
     val adminPort: Int = freePort(),
     googleSiteverify: String = bayern.kickner.kovexy.access.GOOGLE_SITEVERIFY,
+    prepare: (dataDir: File) -> Unit = {},
 ) : AutoCloseable {
-    val dataDir: File = Files.createTempDirectory("kovexy-test").toFile()
+    val dataDir: File = Files.createTempDirectory("kovexy-test").toFile().also(prepare)
     val ports = Ports(freePort(), freePort())
     val store = ConfigStore(dataDir)
     val kovexy: Kovexy

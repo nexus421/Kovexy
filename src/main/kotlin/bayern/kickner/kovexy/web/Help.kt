@@ -148,7 +148,7 @@ private val HELP: Map<String, HelpText> = mapOf(
     ),
     "dyndns.profiles" to HelpText(
         "The access profiles that let this client's reported IP in.",
-        "Kovexy adds the address the client reports to the allow list of each ticked profile, next to the entries you wrote yourself. Your own entries are never changed.",
+        "Kovexy adds the address the client reports to the allow list of each ticked profile, next to the entries you wrote yourself. Your own entries are never changed. A ticked profile without an allow list of its own lets nobody in by IP until one of its clients has reported, only its countries and local addresses still get in.",
         "Tick only the profiles of services that are meant for this location.",
     ),
     "domain.enabled" to HelpText("Turns the domain on or off.", "A disabled domain is treated as if it did not exist. Visitors get the fallback and its certificates are not renewed."),

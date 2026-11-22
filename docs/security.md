@@ -169,12 +169,19 @@ can do one thing: add reported addresses to the allow lists of the profiles of t
 
 - Passwords are generated (24 random bytes), shown once and stored as SHA-256. They are high entropy, so a fast hash is
   enough, and the hash is compared in constant time (also for an unknown name). A failed login counts as blocked
-  request in the statistics, the rate limit of the domain's profile applies as for any request.
+  request in the statistics and is a security event `BASIC_AUTH_FAILED`, the rate limit of the domain's profile
+  applies as for any request.
+- A report is written to the state file before it counts. If the file cannot be written the client gets `911` and
+  nothing changes.
 - Reported addresses must be public: IPv4 a single host, IPv6 a global host or a prefix from /48 to /128. Private,
   loopback, documentation and link-local addresses are refused, and nothing is ever resolved by name.
 - Log lines and access log never hold passwords, the `Authorization` header or query values.
-- Known limits: an empty allow list lets everybody in, and a client that is compromised can put any public address
-  on the allow lists of its profiles. Give a client only the profiles of services that are meant for its location.
+- A profile with clients fails closed: without any reported address and without `allowIps` of its own nobody gets
+  in by IP (lost or broken state file included). Countries and `allowLocal` of the profile still apply.
+- Known limits: a profile without clients and with an empty allow list lets everybody in, so removing the last client
+  of such a profile opens it (the client page warns). A client that is compromised can put any public address on the
+  allow lists of its profiles. Give a client only the profiles of services that are meant for its location, and use
+  every login on one device only.
 
 ## Audit log and security events
 

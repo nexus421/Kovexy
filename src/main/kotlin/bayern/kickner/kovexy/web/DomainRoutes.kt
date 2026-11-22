@@ -106,7 +106,9 @@ fun Route.domainRoutes(kovexy: Kovexy) {
         val (domain, parseProblems) = domainFromForm(params, DomainConfig(names = emptyList()))
         val backend = params["rootBackend"].orEmpty()
         val withRoot = if (backend.isNotEmpty() && domain.dyndns.not()) domain.copy(routes = listOf(RouteConfig("/", target = Target.Backend(backend)))) else domain
-        val problems = parseProblems.ifEmpty { call.saveConfig(params["version"]) { it.copy(domains = it.domains + withRoot) } }
+        // The backend is refused, not dropped, the admin picked it and gets told why it cannot be used
+        val dyndnsProblems = if (backend.isNotEmpty() && domain.dyndns) listOf("A domain used for DynDNS has no routes, set \"Forward / to\" to \"nothing yet\"") else emptyList()
+        val problems = (parseProblems + dyndnsProblems).ifEmpty { call.saveConfig(params["version"]) { it.copy(domains = it.domains + withRoot) } }
         if (problems == null) return@post call.respondRedirect("/domains/${kovexy.config.domains.size - 1}?done=domain-saved")
         call.domainForm(kovexy, null, withRoot, problems, params["version"])
     }
