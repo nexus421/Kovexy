@@ -94,6 +94,7 @@ fun Application.kovexyModule(kovexy: Kovexy) {
         webhookRoutes(kovexy)
         settingsRoutes(kovexy)
         accessRoutes(kovexy)
+        dyndnsRoutes(kovexy)
         securityRoutes(kovexy)
         incusRoutes(kovexy)
         // Everything else, also known paths with the wrong method

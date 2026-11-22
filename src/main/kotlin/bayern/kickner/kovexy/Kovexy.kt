@@ -48,6 +48,10 @@ import bayern.kickner.kovexy.access.CaptchaService
 import bayern.kickner.kovexy.access.GOOGLE_SITEVERIFY
 import bayern.kickner.kovexy.access.GoogleVerifier
 import bayern.kickner.kovexy.proxy.ReservedPaths
+import bayern.kickner.kovexy.dyndns.DYNDNS_STATE_FILE
+import bayern.kickner.kovexy.dyndns.DyndnsEndpoint
+import bayern.kickner.kovexy.dyndns.DyndnsStore
+import bayern.kickner.kovexy.dyndns.withDyndnsAllowIps
 import bayern.kickner.kovexy.incus.IncusDecisions
 import bayern.kickner.kovexy.incus.IncusDiscovery
 import bayern.kickner.kovexy.incus.withIncusRoutes
@@ -97,6 +101,7 @@ const val PASSWORD_ONLY_WARNING = "The admin UI is protected by a password only.
  * @property access Runs access profiles.
  * @property captcha Solved captchas and the Google check.
  * @property incusDecisions Approvals and rejections of Incus containers.
+ * @property dyndns Last addresses reported by the DynDNS clients.
  * @property scope Background work, cancelled on [stop].
  * @property clock Unix milliseconds.
  */
@@ -124,6 +129,7 @@ class Kovexy internal constructor(
     val access: AccessChecker,
     val captcha: CaptchaService,
     val incusDecisions: IncusDecisions,
+    val dyndns: DyndnsStore,
     val scope: CoroutineScope,
     val clock: () -> Long,
     ports: Ports,
@@ -154,7 +160,7 @@ class Kovexy internal constructor(
      */
     @Synchronized
     fun rebuildRouting() {
-        val effective = withIncusRoutes(config, incus.claims)
+        val effective = withDyndnsAllowIps(withIncusRoutes(config, incus.claims), dyndns)
         backends.reconcile(effective.backends)
         // Clients of hosts that no backend uses any more (an edited address, an Incus container with a new IP) go away
         clients.current.retainHosts(backends.all().flatMap { group -> group.servers.map { it.address.host } }.toSet())
@@ -179,6 +185,7 @@ class Kovexy internal constructor(
         bans = bans,
         access = access,
         reserved = ReservedPaths(captcha, security),
+        dyndns = DyndnsEndpoint({ config }, dyndns, ::rebuildRouting),
         geo = geo,
         adminPort = { server.adminPort },
         clock = clock,
@@ -374,6 +381,7 @@ fun createKovexy(
         access = AccessChecker(geo, bans, security, RateLimiter(clock), BasicAuthChecker(clock), captcha) { config().aiCrawlers },
         captcha = captcha,
         incusDecisions = IncusDecisions(storage, clock),
+        dyndns = DyndnsStore(File(dataDir, DYNDNS_STATE_FILE), clock),
         scope = scope,
         clock = clock,
         ports = ports,

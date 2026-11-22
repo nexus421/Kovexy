@@ -17,6 +17,8 @@ import bayern.kickner.kovexy.access.isDrop
 import bayern.kickner.kovexy.access.isForeignInitiated
 import bayern.kickner.kovexy.cleanText
 import bayern.kickner.kovexy.config.MatchType
+import bayern.kickner.kovexy.dyndns.DYNDNS_UPDATE_PATH
+import bayern.kickner.kovexy.dyndns.DyndnsEndpoint
 import bayern.kickner.kovexy.config.AccessProfile
 import bayern.kickner.kovexy.config.parseIpLiteral
 import bayern.kickner.kovexy.config.Fallback
@@ -127,6 +129,7 @@ private class Trace(val start: Long, val clientIp: String, val method: String, v
  * @param bans Active bans.
  * @param access Runs access profiles.
  * @param reserved Answers `/.kovexy/` and shows captcha pages.
+ * @param dyndns Answers `/nic/update` on domains with `dyndns`.
  * @param geo Country of the visitor for the statistics.
  * @param clock Unix milliseconds.
  */
@@ -143,6 +146,7 @@ class ProxyHandler(
     private val bans: BanStore,
     private val access: AccessChecker,
     private val reserved: ReservedPaths,
+    private val dyndns: DyndnsEndpoint,
     private val geo: Geo,
     private val adminPort: () -> Int = { -1 },
     private val clock: () -> Long = System::currentTimeMillis,
@@ -353,6 +357,23 @@ class ProxyHandler(
                     return
                 }
             }
+        }
+
+        // A DynDNS domain answers the update path itself and nothing else (it has no routes)
+        if (domain.config.dyndns) {
+            if (path != DYNDNS_UPDATE_PATH) {
+                trace.reason = "dyndns domain"
+                respondText(call, trace, notFoundPage(), ContentType.Text.Html, HttpStatusCode.NotFound)
+                return
+            }
+            val answer = dyndns.answer(call.request.httpMethod.value, call.request.headers[HttpHeaders.Authorization], rawUri.substringAfter('?', ""), trace.clientIp)
+            trace.reason = answer.reason
+            if (answer.authFailed) {
+                trace.block = BlockKind.BASIC_AUTH
+                call.response.headers.append(HttpHeaders.WWWAuthenticate, "Basic realm=\"dyndns\", charset=\"UTF-8\"")
+            }
+            respondText(call, trace, answer.body, ContentType.Text.Plain, HttpStatusCode.fromValue(answer.status))
+            return
         }
 
         if (route == null) {

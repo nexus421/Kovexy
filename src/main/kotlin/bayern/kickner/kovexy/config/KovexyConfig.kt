@@ -65,6 +65,7 @@ const val LETS_ENCRYPT_STAGING = "https://acme-staging-v02.api.letsencrypt.org/d
  * @property trustedProxies IPs or CIDR ranges whose `X-Forwarded-*` headers are believed.
  * @property fallback What happens for a name no domain serves.
  * @property accessProfiles Reusable access profiles for domains and routes.
+ * @property dyndnsClients Clients that report their IP to a domain with `dyndns`, see [DyndnsClient].
  * @property aiCrawlers Changes to the shipped AI crawler list, for every profile.
  * @property incus Discovery of Incus containers.
  * @property backends Reusable groups of backend servers.
@@ -84,6 +85,7 @@ data class KovexyConfig(
     val trustedProxies: List<String> = emptyList(),
     val fallback: Fallback = Fallback.Static(),
     val accessProfiles: List<AccessProfile> = emptyList(),
+    val dyndnsClients: List<DyndnsClient> = emptyList(),
     val aiCrawlers: AiCrawlersConfig = AiCrawlersConfig(),
     val incus: IncusConfig = IncusConfig(),
     val backends: List<BackendConfig> = emptyList(),
@@ -273,6 +275,9 @@ data class HealthCheckConfig(
  * @property routes Path rules. The most specific matching one wins, the order does not matter.
  * @property enabled A disabled domain is treated as if it did not exist.
  * @property accessLog Writes requests of this domain to the access log.
+ * @property dyndns The domain answers only `GET /nic/update` (dyndns2) for [KovexyConfig.dyndnsClients] and no other
+ *   path. Such a domain has no [routes]. Its access profile applies as everywhere, so one with an allow list locks the
+ *   routers out.
  */
 @Serializable
 data class DomainConfig(
@@ -281,6 +286,22 @@ data class DomainConfig(
     val routes: List<RouteConfig> = emptyList(),
     val enabled: Boolean = true,
     val accessLog: Boolean = true,
+    val dyndns: Boolean = false,
+)
+
+/**
+ * A DynDNS client, for example a router. It reports its IP to a domain with [DomainConfig.dyndns], and the reported
+ * addresses count as `allowIps` of its [profiles] besides the ones in the config.
+ *
+ * @property name User name of the client, letters, digits, `.`, `_` and `-`, at most 64 characters.
+ * @property passwordHash SHA-256 of the generated password as lower case hex.
+ * @property profiles Names of the access profiles that get the reported addresses.
+ */
+@Serializable
+data class DyndnsClient(
+    val name: String,
+    val passwordHash: String,
+    val profiles: List<String>,
 )
 
 /** How a route path is compared with the request path. */

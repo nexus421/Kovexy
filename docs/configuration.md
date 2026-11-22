@@ -48,6 +48,7 @@ picked up as well. Every change is checked completely and applied while running:
 | `trustedProxies` | `[]` | IPs or CIDR ranges whose `X-Forwarded-*` headers are believed |
 | `fallback` | static files from `<dataDir>/www` | Answer for requests to names that no domain serves |
 | `accessProfiles` | `[]` | Reusable access profiles, see below |
+| `dyndnsClients` | `[]` | DynDNS clients, see below |
 | `aiCrawlers` | no changes | Changes to the shipped AI crawler list for every profile, see below |
 | `incus` | off | Discovery of Incus containers, see below |
 | `backends` | `[]` | Named backends with their servers |
@@ -108,6 +109,7 @@ Using ACME means agreeing to the terms of service of the CA, like with Caddy.
 | `access` | empty | Name of an access profile for the whole domain |
 | `enabled` | `true` | |
 | `accessLog` | `true` | Writes requests to the access log. Statistics count them anyway |
+| `dyndns` | `false` | The domain answers only `GET /nic/update` (dyndns2) and everything else with a 404. It must have no routes. Its access profile applies as everywhere |
 | `routes[].path` | required | Starts with `/`. A prefix path has no trailing slash |
 | `routes[].match` | `"prefix"` | `"prefix"` or `"exact"` |
 | `routes[].stripPrefix` | `false` | Only for backend targets |
@@ -125,6 +127,21 @@ Using ACME means agreeing to the terms of service of the CA, like with Caddy.
 | `"static"` | `root` (absolute or relative to the data directory), `directoryListing` (default `false`). Hidden files (starting with a dot) are never served, except `.well-known` |
 | `"redirect"` | `url`, `status` (`307` default or `301`), `keepPath` (default `true`) |
 | `"deny"` | `status` (default `404`), `html` (optional own page) |
+
+### `dyndnsClients[]`
+
+| Field | Meaning |
+|---|---|
+| `name` | User name in the router. Letters, digits, `.`, `_`, `-`, at most 64 characters, `new` is reserved. Unique |
+| `passwordHash` | SHA-256 of the generated password, 64 lower case hex digits. The admin UI creates the password (24 random bytes as hex) and shows it once |
+| `profiles` | Names of access profiles, at least one |
+
+The addresses a client reports are **not** in `kovexy.json`. They are in `<dataDir>/dyndns-state.json` (`0600`, written
+atomically, a missing or broken file means nobody has reported yet), so a router update never changes the config
+version, the backups or the audit log. The allow list of a profile is `allowIps` plus the addresses of all clients
+that use it, rebuilt with the routing table on every change. The entries in the config are never touched, and a
+client only ever changes its own addresses (an address two clients report stays until both stop). Reports of a
+client that is no longer in the config are ignored.
 
 ### `fallback`
 

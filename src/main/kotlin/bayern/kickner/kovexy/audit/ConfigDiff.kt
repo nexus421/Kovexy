@@ -25,6 +25,7 @@ fun maskSecrets(config: KovexyConfig): KovexyConfig = config.copy(
             captcha = profile.captcha?.let { it.copy(secretKey = it.secretKey.mask()) },
         )
     },
+    dyndnsClients = config.dyndnsClients.map { it.copy(passwordHash = it.passwordHash.mask()) },
     webhooks = config.webhooks.map { hook -> hook.copy(url = maskUrl(hook.url), headers = hook.headers.mapValues { it.value.mask() }) },
 )
 
@@ -48,6 +49,10 @@ private fun secretChanges(old: KovexyConfig, new: KovexyConfig): List<String> = 
         profile.basicAuth?.users?.forEach { user ->
             if (before[user.name] != null && before[user.name] != user.hash) add("password of Basic Auth user ${user.name} in profile ${profile.name}")
         }
+    }
+    new.dyndnsClients.forEach { client ->
+        val before = old.dyndnsClients.firstOrNull { it.name == client.name }?.passwordHash
+        if (before != null && before != client.passwordHash) add("password of DynDNS client ${client.name}")
     }
     new.webhooks.forEach { hook ->
         val oldUrl = old.webhooks.firstOrNull { it.name == hook.name }?.url

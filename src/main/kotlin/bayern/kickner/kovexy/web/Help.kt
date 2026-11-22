@@ -137,6 +137,20 @@ private val HELP: Map<String, HelpText> = mapOf(
         "The domain names this entry serves, one per line, for example example.com and www.example.com. No wildcards.",
         "Every name gets its own certificate from Let's Encrypt. The name must point to this server and port 80 must be reachable from the internet. A name can belong to one domain only.",
     ),
+    "domain.dyndns" to HelpText(
+        "Makes this domain the address your routers report their IP to.",
+        "The domain then answers only /nic/update and everything else with a 404. It must have no routes. Its access profile still applies, so a profile with an allow list locks the routers out.",
+        "Use a name of its own, for example dyndns.example.com, without an access profile or with one that only limits the request rate.",
+    ),
+    "dyndns.client" to HelpText(
+        "The user name the router logs in with.",
+        "Letters, digits, dots, underscores and hyphens. It cannot be changed later, delete the client and add it again instead.",
+    ),
+    "dyndns.profiles" to HelpText(
+        "The access profiles that let this client's reported IP in.",
+        "Kovexy adds the address the client reports to the allow list of each ticked profile, next to the entries you wrote yourself. Your own entries are never changed.",
+        "Tick only the profiles of services that are meant for this location.",
+    ),
     "domain.enabled" to HelpText("Turns the domain on or off.", "A disabled domain is treated as if it did not exist. Visitors get the fallback and its certificates are not renewed."),
     "accessLog" to HelpText(
         "Writes the requests of this domain to the access log.",

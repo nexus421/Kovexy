@@ -69,6 +69,7 @@ enum class Nav(val label: String, val href: String, val group: NavGroup) {
     FALLBACK("Fallback", "/fallback", NavGroup.ROUTING),
     INCUS("Incus", "/incus", NavGroup.ROUTING),
     ACCESS("Access", "/access", NavGroup.PROTECTION),
+    DYNDNS("DynDNS", "/dyndns", NavGroup.PROTECTION),
     SECURITY("Security", "/security", NavGroup.PROTECTION),
     WEBHOOKS("Webhooks", "/webhooks", NavGroup.SYSTEM),
     AUDIT("Audit", "/audit", NavGroup.SYSTEM),
@@ -115,6 +116,8 @@ enum class PageFrame {
  * no text from the URL ever ends up on the page.
  */
 internal val flashMessages = mapOf(
+    "dyndns-saved" to "Client saved and applied.",
+    "dyndns-deleted" to "Client deleted.",
     "domain-saved" to "Domain saved and applied.",
     "domain-deleted" to "Domain deleted.",
     "route-saved" to "Route saved and applied.",

@@ -46,6 +46,8 @@ fun validateConfig(config: KovexyConfig): List<String> = buildList {
     config.accessProfiles.groupBy { it.name }.filter { it.value.size > 1 }.keys.forEach { add("access profile name \"$it\" is used more than once") }
 
     config.domains.forEachIndexed { i, domain -> validateDomain("domains[$i]", domain, backendNames, profileNames) }
+    config.dyndnsClients.forEachIndexed { i, client -> validateDyndnsClient("dyndnsClients[$i]", client, profileNames) }
+    config.dyndnsClients.groupBy { it.name }.filter { it.value.size > 1 }.keys.forEach { add("dyndns client name \"$it\" is used more than once") }
     (config.aiCrawlers.add.map { "aiCrawlers.add" to it } + config.aiCrawlers.ignore.map { "aiCrawlers.ignore" to it }).forEach { (field, entry) ->
         if (entry.isBlank()) add("$field must not contain empty entries")
         if (entry.length > MAX_AI_CRAWLER_ENTRY) add("$field entry \"${entry.take(40)}...\" is longer than $MAX_AI_CRAWLER_ENTRY characters")
@@ -169,10 +171,20 @@ private fun MutableList<String>.validateDomain(owner: String, domain: DomainConf
     domain.names.groupBy { it }.filter { it.value.size > 1 }.keys.forEach { add("$owner lists name $it more than once") }
     domain.access?.let { if (it !in profiles) add("$owner.access \"$it\" is no access profile") }
 
+    if (domain.dyndns && domain.routes.isNotEmpty()) add("$owner.dyndns answers only /nic/update, remove the routes of this domain")
     domain.routes.forEachIndexed { j, route -> validateRoute("$owner.routes[$j]", route, backends, profiles) }
     domain.routes.groupBy { it.path to it.match }.filter { it.value.size > 1 }.keys.forEach { (path, match) ->
         add("$owner has more than one ${match.name.lowercase()} route for $path")
     }
+}
+
+private val dyndnsClientName = "[A-Za-z0-9._-]{1,64}".toRegex()
+
+private fun MutableList<String>.validateDyndnsClient(owner: String, client: DyndnsClient, profiles: Set<String>) {
+    if (dyndnsClientName.matches(client.name).not() || client.name == "new") add("$owner.name must be 1 to 64 letters, digits, dots, underscores or hyphens, and not \"new\"")
+    if (client.passwordHash.matches("[0-9a-f]{64}".toRegex()).not()) add("$owner.passwordHash must be the SHA-256 of the password as 64 lower case hex digits")
+    if (client.profiles.isEmpty()) add("$owner needs at least one access profile")
+    client.profiles.forEach { if (it !in profiles) add("$owner.profiles \"$it\" is no access profile") }
 }
 
 private fun MutableList<String>.validateRoute(owner: String, route: RouteConfig, backends: Set<String>, profiles: Set<String>) {

@@ -28,7 +28,8 @@ class TranslationsTest {
               { "path": "/files", "target": { "type": "static", "root": "/tmp" } },
               { "path": "/go", "target": { "type": "redirect", "url": "https://x.test" } },
               { "path": "/no", "target": { "type": "deny" } } ] },
-            { "names": ["quiet.test"], "accessLog": false } ],
+            { "names": ["quiet.test"], "accessLog": false }, { "names": ["dyn.test"], "dyndns": true } ],
+          "dyndnsClients": [ { "name": "c", "passwordHash": "${"0".repeat(64)}", "profiles": ["p"] } ],
           "webhooks": [ { "name": "w", "url": "https://hook.test/x" } ] }
     """.trimIndent()
 
@@ -57,7 +58,7 @@ class TranslationsTest {
                     "/login", "/", "/statistics", "/statistics?range=7d", "/statistics?range=365d&domain=a.test", "/access-log", "/access-log?status=blocked", "/access-log?status=redirects",
                     "/domains", "/domains/new", "/domains/0", "/domains/0/routes/new", "/domains/0/routes/0", "/domains/0/routes/1", "/domains/0/routes/2", "/domains/0/routes/3",
                     "/backends", "/backends/new", "/backends/app", "/certificates", "/fallback", "/incus", "/access", "/access/new", "/access/p",
-                    "/security", "/audit", "/webhooks", "/webhooks/new", "/webhooks/w", "/settings", "/domains/99", "/backends/none", "/access/none", "/webhooks/none",
+                    "/security", "/audit", "/webhooks", "/webhooks/new", "/webhooks/w", "/dyndns", "/dyndns/new", "/dyndns/c", "/dyndns/none", "/settings", "/domains/99", "/backends/none", "/access/none", "/webhooks/none",
                 ) + flashMessages.keys.map { "/?done=$it" }
                 pages.forEach { path -> get(path) }
                 // The login page and an error page without a session
@@ -68,6 +69,8 @@ class TranslationsTest {
                 post("/access/new", form("name" to ""), cookie)
                 post("/backends/new", form("name" to ""), cookie)
                 post("/webhooks/new", form("name" to ""), cookie)
+                post("/dyndns/new", form("name" to ""), cookie)
+                post("/dyndns/new", form("version" to harness.store.current.version, "name" to "router", "profile.p" to "on"), cookie)
                 post("/settings", form("adminPort" to "x"), cookie)
                 post("/settings/password", form("current" to "wrong", "new" to "a", "repeat" to "b"), cookie)
             } finally {

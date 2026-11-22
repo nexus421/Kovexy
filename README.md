@@ -18,6 +18,7 @@ Kovexy runs as a single fat JAR with systemd, no Docker. It takes its ideas from
 - Request and response headers per route, with a template for security headers.
 - Access profiles: IP and country rules, exploit filter, AI crawlers, trap paths with automatic bans, rate limit,
   allowed methods, Google reCAPTCHA, Basic Auth.
+- DynDNS: routers report their changing IP and Kovexy adds it to the allow list of chosen access profiles.
 - Incus discovery: containers with `user.kovexy.*` keys go live after one click.
 - Admin login with password, OIDC or both, audit log and security events.
 - Admin UI with live status, statistics as charts with percentiles and top lists, access log, light and dark mode.

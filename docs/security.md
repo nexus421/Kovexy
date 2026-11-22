@@ -162,6 +162,20 @@ turned off under Settings.
   `limits.maxAcceptsPerSecond` pauses accepting. Kovexy counts open TCP connections itself, because Jetty's
   `ConnectionLimit` did not count TLS connections with ALPN.
 
+## DynDNS
+
+A domain with `dyndns` answers only `GET /nic/update`, after the access profile of the domain has run. The endpoint
+can do one thing: add reported addresses to the allow lists of the profiles of the client that logged in.
+
+- Passwords are generated (24 random bytes), shown once and stored as SHA-256. They are high entropy, so a fast hash is
+  enough, and the hash is compared in constant time (also for an unknown name). A failed login counts as blocked
+  request in the statistics, the rate limit of the domain's profile applies as for any request.
+- Reported addresses must be public: IPv4 a single host, IPv6 a global host or a prefix from /48 to /128. Private,
+  loopback, documentation and link-local addresses are refused, and nothing is ever resolved by name.
+- Log lines and access log never hold passwords, the `Authorization` header or query values.
+- Known limits: an empty allow list lets everybody in, and a client that is compromised can put any public address
+  on the allow lists of its profiles. Give a client only the profiles of services that are meant for its location.
+
 ## Audit log and security events
 
 - The audit log records logins, logouts, failed logins, every config change (from the admin UI with the admin's name,

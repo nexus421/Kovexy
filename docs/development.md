@@ -91,6 +91,7 @@ tarballs, check the `integrity` value of the registry and update `SHA256SUMS`.
 | `stats` | SQLite through Exposed, access log and statistics writer |
 | `notify` | Events and webhooks |
 | `access` | Access profiles: country data, exploit patterns, rate limit, bans, Basic Auth, captcha |
+| `dyndns` | DynDNS: address rules, state file of reported addresses and merged allow lists, the `/nic/update` endpoint |
 | `incus` | Incus discovery: API over the unix socket, claims, decisions, dynamic domains |
 | `audit` | Audit log, security events, config diff |
 | `backup` | Backup and restore |
@@ -102,6 +103,7 @@ tarballs, check the `integrity` value of the registry and update `SHA256SUMS`.
 | `GET /login`, `POST /login`, `POST /logout` | Login |
 | `GET /auth/start`, `GET /auth/callback` | OIDC login of the admin, public |
 | `/access`, `/access/{name}` | Access profiles |
+| `/dyndns`, `/dyndns/{name}`, `POST /dyndns/{name}/password`, `POST /dyndns/{name}/delete` | DynDNS clients |
 | `/security`, `POST /security/lift` | Bans and security events |
 | `/audit` | Audit log |
 | `GET /`, `GET /status/events` | Status page and its SSE stream |

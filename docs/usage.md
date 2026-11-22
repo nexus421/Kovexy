@@ -21,6 +21,7 @@ The language of the admin UI (English or German) is set under Settings, Admin UI
 | Statistics | Charts per domain for 24 hours, 7, 30 and 365 days: requests by status class, blocked requests, response time with median, 95th and 99th percentile, traffic, and daily top lists of IPs, countries, paths, user agents, referers, methods, backend servers and refusals by reason |
 | Access log | The latest requests, filtered by domain, status class (or only blocked requests, or only HTTPS redirects) and text. A blocked request shows why it was blocked |
 | Access | Access profiles: IP and country rules, exploit filter, trap paths, rate limit, methods, captcha, Basic Auth, the state of the country data, and changes to the AI crawler list for every profile |
+| DynDNS | Clients such as a router that report their current IP, each with its own password and access profiles. See [DynDNS](#dyndns) |
 | Webhooks | Targets with template and events, the KNot preset and a test message |
 | Security | Active bans with "Lift", the latest security events by kind |
 | Audit | Who changed what and when, config changes with a diff, secrets as `***` |
@@ -78,6 +79,41 @@ against Let's Encrypt staging first, so the production limits are not hit. "Rene
 Unknown names and clients without SNI get a self-signed fallback certificate. Certificates of removed domains stay on
 disk without renewal until they expire, so a domain that comes back reuses its certificate (Let's Encrypt allows only
 five identical certificates per week). Expired ones are deleted, the audit log records it.
+
+## DynDNS
+
+Routers and DynDNS clients (FRITZ!Box, OPNsense, ddclient, anything that speaks dyndns2) report their current IP to
+Kovexy, and Kovexy adds it to the allow list of the access profiles you chose for that client. That is how a service
+stays reachable from home although the IP changes, without an external DynDNS provider.
+
+1. Add a domain and tick "Use for DynDNS". It answers only `/nic/update`, everything else gets a 404, and it has no
+   routes. Use a name of its own, for example `dyndns.example.com`.
+2. Under DynDNS add a client: a name and the access profiles. The page shows the password **once**, together with the
+   ready settings for the FRITZ!Box (*Internet, Freigaben, DynDNS, Benutzerdefiniert*) and for other clients. A lost
+   password is replaced with "New password".
+3. Put the settings into the router. The router now reports whenever its IP changes.
+
+Each update replaces all addresses of that client. A client that sends IPv4 and IPv6 in separate requests (inadyn,
+pfSense) should be two clients. Parameters: `myip` (IPv4 and IPv6, comma separated, FRITZ!Box `<ipaddr>,<ip6lanprefix>`),
+`myipv4`, `ip`, `myipv6`, `myip6`, `ipv6`. Without one the source address is used. IPv4 must be a public single
+address, IPv6 a global host or a prefix from /48 to /128 (host bits are cleared).
+
+| Answer | HTTP | Meaning |
+|---|---|---|
+| `good <ip>` | 200 | The addresses changed and are on the allow lists |
+| `nochg <ip>` | 200 | Same addresses as before |
+| `badauth` | 401 | Wrong name or password |
+| `badrequest <reason>` | 400 | Invalid or private address, broken query |
+
+Two things the admin owns:
+
+- A profile whose allow list is empty lets everybody in. That includes a profile that only has DynDNS clients and none
+  of them has reported yet.
+- Do not give the DynDNS domain a profile with an allow list or a DynDNS client. The routers would be locked out
+  before they can report.
+
+The page shows the last addresses and the time of the last update per client. Every request to `/nic/update` is in
+the access log with its status, a wrong password shows as 401.
 
 ## Backup
 

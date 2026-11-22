@@ -105,7 +105,7 @@ fun Route.domainRoutes(kovexy: Kovexy) {
         val params = call.receiveForm()
         val (domain, parseProblems) = domainFromForm(params, DomainConfig(names = emptyList()))
         val backend = params["rootBackend"].orEmpty()
-        val withRoot = if (backend.isNotEmpty()) domain.copy(routes = listOf(RouteConfig("/", target = Target.Backend(backend)))) else domain
+        val withRoot = if (backend.isNotEmpty() && domain.dyndns.not()) domain.copy(routes = listOf(RouteConfig("/", target = Target.Backend(backend)))) else domain
         val problems = parseProblems.ifEmpty { call.saveConfig(params["version"]) { it.copy(domains = it.domains + withRoot) } }
         if (problems == null) return@post call.respondRedirect("/domains/${kovexy.config.domains.size - 1}?done=domain-saved")
         call.domainForm(kovexy, null, withRoot, problems, params["version"])
@@ -219,6 +219,7 @@ private fun domainFromForm(params: Parameters, base: DomainConfig): Pair<DomainC
         names = domains,
         enabled = params["enabled"] != null,
         accessLog = params["accessLog"] != null,
+        dyndns = params["dyndns"] != null,
         access = params["access"]?.takeIf { it.isNotEmpty() },
     )
     return domain to emptyList()
@@ -238,6 +239,7 @@ private suspend fun ApplicationCall.domainForm(kovexy: Kovexy, index: Int?, doma
                 textAreaField("Domain names", "names", domain.names.joinToString("\n"), rows = 3, hint = t("One per line, exact names like example.com and www.example.com. No wildcards."), required = true)
                 checkField("Enabled", "enabled", domain.enabled, help = "domain.enabled")
                 checkField("Write requests to the access log", "accessLog", domain.accessLog)
+                checkField("Use for DynDNS", "dyndns", domain.dyndns, hint = "answers only /nic/update, no routes", help = "domain.dyndns")
                 profileSelect(kovexy, domain.access, "No profile, every visitor gets in", "A route with its own profile replaces it completely.")
                 if (index == null) {
                     val backends = kovexy.config.backends.map { it.name to it.name }
