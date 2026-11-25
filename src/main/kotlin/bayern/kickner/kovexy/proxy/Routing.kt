@@ -82,10 +82,12 @@ class RoutingTable(val config: KovexyConfig) {
 }
 
 /**
- * Whether [rawPath] can be checked at all: valid percent encoding and no NUL. Requests with another path get 400,
- * matching them on the raw text would let them pass rules they should hit.
+ * Whether [rawPath] can be checked at all: it starts with `/`, has a valid percent encoding and no NUL. Requests with
+ * another path get 400, matching them on the raw text would let them pass rules they should hit.
  */
 fun isValidPath(rawPath: String): Boolean {
+    // `OPTIONS *` and other request targets that are no path would become a broken backend URL (audit run-3)
+    if (rawPath.startsWith("/").not()) return false
     val decoded = runCatching { decodePath(rawPath) }.getOrNull() ?: return false
     return '\u0000' !in decoded
 }

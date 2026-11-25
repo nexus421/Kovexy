@@ -24,7 +24,8 @@
   failed login.
 - Sessions live in SQLite, only the SHA-256 of the token is stored. The cookie `__Host-kovexy-session` is `Secure`,
   `HttpOnly`, `SameSite=Strict`. Sessions end after 60 idle minutes or 12 hours.
-- Changing the password or the login mode in the admin UI ends every other session. A change of either in
+- Changing the password or the login mode in the admin UI ends every other session, a restore of a backup that brings
+  another password or login mode too. A change of either in
   `kovexy.json` (also through `reset-password` and `login-mode=password`, which work in an emergency) ends every
   session. Sessions of subjects removed from `allowedSubjects` end at once. The live status stream stops when its
   session ends.
@@ -52,7 +53,8 @@
 - Hop-by-hop headers (`Connection` and every header it names, `Keep-Alive`, `Proxy-*`, `Te`, `Trailer`,
   `Transfer-Encoding`, `Upgrade`) are never forwarded.
 - Rules match the decoded and cleaned path, so encodings, dot segments and path parameters (`/admin;x`) cannot slip
-  past a block. A path with an invalid encoding or NUL gets 400. Jetty refuses ambiguous paths such as empty segments
+  past a block. A path with an invalid encoding or NUL gets 400, so does a request target that is no path
+  (`OPTIONS *`). Jetty refuses ambiguous paths such as empty segments
   (`//admin`) with 400. When `stripPrefix` cannot use the raw path, the cleaned path is encoded again, so a backend
   never decodes twice.
 - A profile that cannot read the visitor's address refuses the request instead of skipping its checks.
@@ -103,7 +105,11 @@
   since.
 - A stored key that does not match its certificate is not loaded, the domain gets a new certificate.
 - The command line (`reset-password`, `login-mode`, `check`) usually runs as root and never follows a symbolic link
-  for `kovexy.json` or `backups/`, whoever controls the data directory cannot make it read or copy another file.
+  inside the data directory: not for `kovexy.json`, `backups/`, the backup copies or the temporary file. It works on
+  the opened directory, creates its files exclusively and changes owner and mode only without following links, so
+  whoever controls the data directory cannot make it read, write, chmod or chown another file, also not by swapping a
+  link in while it runs. Hard links to files of others are refused by the kernel (`fs.protected_hardlinks`, on by
+  default in Debian).
 - Webhook URLs show only scheme and host in the audit log and in error messages of the config check, Discord, Slack
   and Telegram carry the token in the path.
 - The access log never stores the query string, it often holds tokens. The program log never holds passwords, keys,
@@ -156,6 +162,8 @@ turned off under Settings.
   Removing an Incus domain also closes the WebSockets it admitted. Kovexy reads only the configured projects, at most 16 MiB
   per project and 1 MiB per event, users of a project choose what goes into these answers. A container that is not
   approved cannot take an approved domain offline by claiming the same name, it only gets a warning.
+  A container whose keys are too long to be stored (domains over 1000, access profile over about 580 characters) can
+  always be rejected, but never approved.
 - Connection limits on the proxy ports: `limits.maxConnections` closes connections above the total at once,
   `limits.maxConnectionsPerAddress` (256 by default, IPv6 per /64) those of one address above its share, so a single
   host cannot take all connections. Loopback and `trustedProxies` are not limited per address.

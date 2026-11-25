@@ -16,6 +16,16 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardWatchEventKinds
 import java.nio.file.WatchService
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.LinkOption
+import java.nio.file.Path
+import java.nio.file.SecureDirectoryStream
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFileAttributeView
+import java.nio.file.attribute.PosixFileAttributes
+import java.nio.file.attribute.PosixFilePermissions
+import bayern.kickner.kovexy.randomToken
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -103,8 +113,9 @@ fun encodeConfig(config: KovexyConfig): String = configJson.encodeToString(Kovex
  * running. An invalid file changes nothing.
  *
  * @param dataDir The data directory.
- * @param followLinks `false` for the command line: symbolic links for the config file or the backup directory are
- *   refused instead of followed.
+ * @param followLinks `false` for the command line, which usually runs as root: no symbolic link inside the data
+ *   directory is followed, not for the config file, the backup directory, the backup copies or the temporary file
+ *   (see [saveWithoutLinks]).
  */
 class ConfigStore(val dataDir: File, private val followLinks: Boolean = true) {
     /** The config file. */
@@ -187,8 +198,10 @@ class ConfigStore(val dataDir: File, private val followLinks: Boolean = true) {
 
             val text = encodeConfig(next)
             val written = runCatching {
-                backupCurrentFile()
-                writeAtomically(file, text)
+                if (followLinks) {
+                    backupCurrentFile()
+                    writeAtomically(file, text)
+                } else saveWithoutLinks(text)
             }
             written.exceptionOrNull()?.let { return ResultOf2.Failure(SaveError.Io(it.message ?: it.toString())) }
             val now = LoadedConfig(next, sha256Hex(text))
@@ -275,17 +288,16 @@ class ConfigStore(val dataDir: File, private val followLinks: Boolean = true) {
         runCatching { watcher?.close() }
     }
 
-    /** Copies the current file into [backupDir] and keeps only the newest [CONFIG_BACKUPS_KEPT] copies. */
+    /**
+     * Copies the current file into [backupDir] and keeps only the newest [CONFIG_BACKUPS_KEPT] copies. Only for the
+     * service, the command line uses [saveWithoutLinks].
+     */
     private fun backupCurrentFile() {
         if (file.exists().not()) return
-        check(followLinks || Files.isSymbolicLink(backupDir.toPath()).not()) { "${backupDir.absolutePath} is a symbolic link, the command line does not follow it" }
         val created = backupDir.exists().not()
         ensurePrivateDir(backupDir)
-        // Created by a command line action as root, the directory must stay writable for the service
         if (created) copyOwner(from = dataDir, to = backupDir)
-        val stamp = backupStampFormat.format(Instant.now())
-        // The counter keeps saves within the same millisecond apart
-        val target = File(backupDir, "kovexy-$stamp-${String.format(java.util.Locale.ROOT, "%03d", backupCounter.getAndIncrement() % 1000)}.json")
+        val target = File(backupDir, backupFileName())
         openFile().use { Files.copy(it, target.toPath(), StandardCopyOption.REPLACE_EXISTING) }
         setPermissions(target.toPath(), OWNER_ONLY_FILE)
         copyOwner(from = dataDir, to = target)
@@ -294,6 +306,83 @@ class ConfigStore(val dataDir: File, private val followLinks: Boolean = true) {
             ?.drop(CONFIG_BACKUPS_KEPT)
             ?.forEach { it.delete() }
     }
+
+    /**
+     * [backupCurrentFile] and [writeAtomically] for the command line (`followLinks = false`), which usually runs as root
+     * in a directory the service account owns. Every step works on the opened data directory and never follows a link
+     * inside it, also not one that is swapped in while the save runs: files are created exclusively with `0600`,
+     * written through the descriptor that created them, chowned through a descriptor opened with `O_NOFOLLOW` and
+     * renamed inside the directory (audit run-3, the S4 fix of 19.11.2026 only covered `kovexy.json` and `backups/`
+     * itself). A hard link to a file of somebody else cannot be planted either, `fs.protected_hardlinks` refuses it.
+     */
+    private fun saveWithoutLinks(text: String) {
+        val owner = Files.readAttributes(dataDir.toPath(), PosixFileAttributes::class.java)
+        val noFollow = LinkOption.NOFOLLOW_LINKS
+        val config = Path.of(CONFIG_FILE_NAME)
+        (Files.newDirectoryStream(dataDir.toPath()) as SecureDirectoryStream<Path>).use { dir ->
+            val current = runCatching { dir.getFileAttributeView(config, PosixFileAttributeView::class.java, noFollow).readAttributes() }.getOrNull()
+            if (current != null && current.isRegularFile) {
+                openBackupDir(dir, owner).use { backups ->
+                    val name = Path.of(backupFileName())
+                    runCatching { backups.deleteFile(name) }
+                    dir.newByteChannel(config, setOf(StandardOpenOption.READ, noFollow)).use { input ->
+                        backups.newByteChannel(name, setOf(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, noFollow), privateFile).use { output ->
+                            val buffer = ByteBuffer.allocate(64 * 1024)
+                            while (input.read(buffer) >= 0) {
+                                buffer.flip()
+                                while (buffer.hasRemaining()) output.write(buffer)
+                                buffer.clear()
+                            }
+                        }
+                    }
+                    setOwner(backups.getFileAttributeView(name, PosixFileAttributeView::class.java, noFollow), owner)
+                    backups.map { it.fileName.toString() }.filter { it.startsWith("kovexy-") && it.endsWith(".json") }
+                        .sortedDescending().drop(CONFIG_BACKUPS_KEPT).forEach { runCatching { backups.deleteFile(Path.of(it)) } }
+                }
+            }
+            val temp = Path.of(".$CONFIG_FILE_NAME.${randomToken(9)}.tmp")
+            try {
+                (dir.newByteChannel(temp, setOf(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, noFollow), privateFile) as FileChannel).use { channel ->
+                    val buffer = ByteBuffer.wrap(text.toByteArray())
+                    while (buffer.hasRemaining()) channel.write(buffer)
+                    // On disk before the rename, so a power cut never leaves an empty file behind
+                    channel.force(true)
+                }
+                // The new file gets the owner of the old one (or of the directory), the service must keep reading it
+                setOwner(dir.getFileAttributeView(temp, PosixFileAttributeView::class.java, noFollow), current?.takeIf { it.isRegularFile } ?: owner)
+                dir.move(temp, dir, config)
+            } finally {
+                runCatching { dir.deleteFile(temp) }
+            }
+        }
+    }
+
+    /** Opens `backups/` inside [dir] without following a link, creates it if needed (`0700`, owned like the data directory). */
+    private fun openBackupDir(dir: SecureDirectoryStream<Path>, owner: PosixFileAttributes): SecureDirectoryStream<Path> {
+        val name = Path.of(backupDir.name)
+        val existing = runCatching { dir.getFileAttributeView(name, PosixFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS).readAttributes() }.getOrNull()
+        check(existing?.isSymbolicLink != true) { "${backupDir.absolutePath} is a symbolic link, the command line does not follow it" }
+        if (existing == null) Files.createDirectory(backupDir.toPath(), PosixFilePermissions.asFileAttribute(bayern.kickner.kovexy.OWNER_ONLY_DIR))
+        // Fails on a link that was swapped in after the check
+        val backups = dir.newDirectoryStream(name, LinkOption.NOFOLLOW_LINKS)
+        val view = backups.getFileAttributeView(PosixFileAttributeView::class.java)
+        runCatching { view.setPermissions(bayern.kickner.kovexy.OWNER_ONLY_DIR) }
+        if (existing == null) setOwner(view, owner)
+        return backups
+    }
+
+    /** Gives the file of [view] the owner and group of [like] if they differ. Only root may, otherwise nothing happens. */
+    private fun setOwner(view: PosixFileAttributeView, like: PosixFileAttributes) {
+        runCatching {
+            val now = view.readAttributes()
+            if (now.owner() != like.owner()) view.setOwner(like.owner())
+            if (now.group() != like.group()) view.setGroup(like.group())
+        }
+    }
+
+    /** Name of a new copy in [backupDir]. The counter keeps saves within the same millisecond apart. */
+    private fun backupFileName(): String =
+        "kovexy-${backupStampFormat.format(Instant.now())}-${String.format(java.util.Locale.ROOT, "%03d", backupCounter.getAndIncrement() % 1000)}.json"
 
     /**
      * Opens the config file. With `followLinks = false` (the command line, which may run as root) a symbolic link is
@@ -309,6 +398,9 @@ class ConfigStore(val dataDir: File, private val followLinks: Boolean = true) {
         staticLog(KLogger.Level.ERROR, TAG) { "Applying the config failed: ${error.stackTraceToString()}" }
     }
 }
+
+/** A new file is `0600` from the moment it exists. */
+private val privateFile = PosixFilePermissions.asFileAttribute(OWNER_ONLY_FILE)
 
 /** Sortable file name stamp with milliseconds, in UTC so the order survives a DST change. */
 private val backupStampFormat = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS").withZone(java.time.ZoneOffset.UTC)

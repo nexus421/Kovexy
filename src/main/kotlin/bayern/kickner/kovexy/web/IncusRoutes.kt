@@ -58,7 +58,7 @@ fun Route.incusRoutes(kovexy: Kovexy) {
         // Approve exactly what the admin saw, the domains may have changed in between
         val domains = params["domains"].orEmpty().split(',').filter { it.isNotEmpty() }
         if (kovexy.incus.approve(id, domains, params["target"].orEmpty()).not()) {
-            return@post call.incusPage(kovexy, listOf("The container, its domains or its target changed meanwhile, check the list again"), null)
+            return@post call.incusPage(kovexy, listOf("The container, its domains or its target changed meanwhile, or its keys are too long. Check the list again"), null)
         }
         kovexy.audit.record(call.actor, AuditAction.INCUS_APPROVED, id, domains.joinToString(", "))
         call.respondRedirect("/incus?done=incus-approved")

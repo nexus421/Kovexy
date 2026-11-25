@@ -164,6 +164,7 @@ fun Route.settingsRoutes(kovexy: Kovexy) {
     }
 
     post("/settings/restore") {
+        val before = kovexy.config.admin
         // Streamed to a private file, a backup with database can be larger than the heap
         val upload = File(kovexy.dataDir, ".upload-${System.nanoTime()}.zip")
         try {
@@ -189,6 +190,9 @@ fun Route.settingsRoutes(kovexy: Kovexy) {
             call.response.cookies.append(sessionCookie("", 0))
             return@post call.respondRedirect("/login?done=restored-login")
         }
+        // Like a change under Settings: another password or login mode ends every other session (audit run-3)
+        val after = kovexy.config.admin
+        if (after.passwordHash != before.passwordHash || after.loginMode != before.loginMode) kovexy.sessions.removeAllExcept(call.attributes[SessionTokenKey])
         call.respondRedirect("/settings?done=restored")
     }
 

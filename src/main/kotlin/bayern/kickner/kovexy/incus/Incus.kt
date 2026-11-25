@@ -198,8 +198,8 @@ fun buildClaims(instances: List<IncusInstance>, decisions: List<IncusDecision>, 
         }
         val problems = buildList {
             if (domains.isEmpty()) add("user.kovexy.domains is missing")
-            // The decision stores the domains in a column of 1000 characters
-            if (domains.joinToString(",").length > 1000) add("user.kovexy.domains is longer than 1000 characters")
+            // The decision stores the domains in a column of MAX_DECISION_DOMAINS characters
+            if (domains.joinToString(",").length > MAX_DECISION_DOMAINS) add("user.kovexy.domains is longer than 1000 characters")
             domains.filter { isValidHostName(it).not() }.forEach { add("\"$it\" is not a valid domain") }
             if (port == 0) add(if (portText.isEmpty()) "user.kovexy.port is missing" else "user.kovexy.port \"$portText\" is not a port")
             if (access != null && access !in profiles) add("access profile \"$access\" does not exist")
@@ -240,6 +240,12 @@ fun withIncusRoutes(config: KovexyConfig, claims: List<IncusClaim>): KovexyConfi
         },
     )
 }
+
+/** Longest domain list (comma separated) a decision stores, the size of its column. */
+const val MAX_DECISION_DOMAINS = 1000
+
+/** Longest target ([incusTarget]) a decision stores, the size of its column. */
+const val MAX_DECISION_TARGET = 600
 
 /** Decisions in SQLite, not in `kovexy.json` (decided on 17.11.2026). */
 class IncusDecisions(private val storage: Storage, private val clock: () -> Long) {
@@ -483,7 +489,8 @@ class IncusDiscovery(
 
     /**
      * Approves [id], the route goes live at once. With [domains] and [target] only if the container still claims
-     * exactly those, the admin approves what the page showed.
+     * exactly those, the admin approves what the page showed. `false` also for a claim whose domains or target are too
+     * long to be stored ([MAX_DECISION_DOMAINS], [MAX_DECISION_TARGET]).
      */
     fun approve(id: String, domains: List<String>? = null, target: String? = null): Boolean = decide(id, approved = true, domains, target)
 
@@ -506,7 +513,11 @@ class IncusDiscovery(
         // What the admin saw, it may have changed since the page was shown
         if (domains != null && claim.domains != domains) return false
         if (target != null && claim.target != target) return false
-        decisions.decide(claim.instance.project, claim.instance.name, claim.domains, approved, claim.target)
+        // Incus users choose domains and target, a claim whose values do not fit the decision table cannot be approved.
+        // A rejection counts whatever the claim says and stores neither, so it always works (audit run-3)
+        if (approved && (claim.domains.joinToString(",").length > MAX_DECISION_DOMAINS || claim.target.length > MAX_DECISION_TARGET)) return false
+        if (approved) decisions.decide(claim.instance.project, claim.instance.name, claim.domains, true, claim.target)
+        else decisions.decide(claim.instance.project, claim.instance.name, emptyList(), false)
         if (approved) events.emit(Event(WebhookEvent.INCUS_APPROVED, "Incus container $id approved", claim.domains.joinToString(", "), time = clock()))
         recompute()
         return true

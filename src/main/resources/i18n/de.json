@@ -674,7 +674,7 @@
  "The client ID the identity provider gave to Kovexy.": "Die Client-ID, die der Identity-Provider Kovexy gegeben hat.",
  "The client secret that belongs to the client ID.": "Das Client-Secret, das zur Client-ID gehört.",
  "The configuration changed since this page was loaded (in another tab or in the file). Open the page again to see the current state.": "Die Konfiguration hat sich geändert, seit diese Seite geladen wurde (in einem anderen Tab oder in der Datei). Öffne die Seite neu, um den aktuellen Stand zu sehen.",
- "The container, its domains or its target changed meanwhile, check the list again": "Der Container, seine Domains oder sein Ziel haben sich inzwischen geändert, prüfe die Liste noch einmal",
+ "The container, its domains or its target changed meanwhile, or its keys are too long. Check the list again": "Der Container, seine Domains oder sein Ziel haben sich inzwischen geändert, oder seine Schlüssel sind zu lang. Prüfe die Liste noch einmal",
  "The directory with the files to serve, absolute or relative to the data directory.": "Das Verzeichnis mit den auszuliefernden Dateien, absolut oder relativ zum Datenverzeichnis.",
  "The domain names this entry serves, one per line, for example example.com and www.example.com. No wildcards.": "Die Domainnamen, die dieser Eintrag bedient, einer pro Zeile, zum Beispiel example.com und www.example.com. Keine Wildcards.",
  "The domain then answers only /nic/update and everything else with a 404. It must have no routes. Its access profile still applies, so a profile with an allow list locks the routers out.": "Die Domain beantwortet dann nur /nic/update und alles andere mit 404. Sie darf keine Routen haben. Ihr Zugriffsprofil gilt weiter, ein Profil mit Allow-Liste sperrt also die Router aus.",

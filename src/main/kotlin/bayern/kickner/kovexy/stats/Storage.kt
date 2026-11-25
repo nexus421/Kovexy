@@ -120,11 +120,11 @@ object SecurityEventTable : Table("security_events") {
 object IncusDecisionTable : Table("incus_decisions") {
     val project = varchar("project", 100)
     val instance = varchar("instance", 100)
-    val domains = varchar("domains", 1000)
+    val domains = varchar("domains", bayern.kickner.kovexy.incus.MAX_DECISION_DOMAINS)
     val approved = bool("approved")
     val decidedAt = long("decided_at")
     /** Address, port, HTTPS and profile the approval covers ([bayern.kickner.kovexy.incus.incusTarget]). */
-    val target = varchar("target", 600).default("")
+    val target = varchar("target", bayern.kickner.kovexy.incus.MAX_DECISION_TARGET).default("")
     override val primaryKey = PrimaryKey(project, instance)
 }
 
