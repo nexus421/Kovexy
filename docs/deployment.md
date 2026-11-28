@@ -76,8 +76,26 @@ Kovexy only connects to the outside for:
 
 ## Memory
 
-The units start Java with `-Xmx512m`. In a test 10000 idle TLS connections (the default of `limits.maxConnections`)
-needed about 90 MB of heap, the loaded country data (595025 ranges) about 22 MB (both measured on 18.11.2026).
+The units are sized for a host with 2 to 4 cores and 4 to 8 GB of memory: at most 1 GB of heap (`-Xmx1g`) with the
+G1 collector. `G1PeriodicGCInterval` and the two `HeapFreeRatio` flags hand memory that is no longer needed back to
+the system, so the process stays small while there is little traffic. In a test 10000 idle TLS connections (the default
+of `limits.maxConnections`) needed about 90 MB of heap, the loaded country data (595025 ranges) about 22 MB (both
+measured on 18.11.2026).
+
+On a small host (1 core, 1 GB of memory) use the serial collector and a smaller heap in `ExecStart`:
+
+```
+/usr/bin/java -Xmx384m -XX:+UseSerialGC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=30 -XX:+ExitOnOutOfMemoryError --enable-native-access=ALL-UNNAMED -jar /opt/kovexy/kovexy.jar dataDir=/var/lib/kovexy
+```
+
+`-XX:+ExitOnOutOfMemoryError` ends Kovexy when the heap runs full, systemd starts it again after 2 seconds
+(`RestartSec`). `StartLimitIntervalSec=0` keeps systemd from giving up after several restarts in a row. Exit code 78
+(rejected config, port that cannot be bound) is still never restarted, a restart does not fix either. After editing
+`kovexy.json` by hand, check it before a restart:
+
+```bash
+sudo java -jar /opt/kovexy/kovexy.jar dataDir=/var/lib/kovexy check
+```
 
 ## OIDC with Pocket ID
 

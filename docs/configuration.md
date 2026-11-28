@@ -173,6 +173,7 @@ Delivery is tried three times, with 1 and 3 seconds in between.
 |---|---|---|
 | `backendConnectTimeout` | `"3s"` | Caddy |
 | `backendKeepAlive` | `"2m"` | Caddy |
+| `backendResponseTimeout` | `"10m"` | Time a backend may take for its response headers after the request body was sent, then the visitor gets `504`. Running downloads, server-sent events and WebSockets are never cut. `"0s"` is off. Like Caddy's `response_header_timeout`, which has no default |
 | `clientIdleTimeout` | `"5m"` | Caddy |
 | `maxRequestHeaderBytes` | `16384` | Caddy |
 | `maxConnections` | `10000` | Open connections on the proxy ports in total, `0` is unlimited. More are closed at once. 10000 idle TLS connections took about 90 MB of heap in a test |

@@ -117,11 +117,12 @@ class BackendGroup(val config: BackendConfig, val servers: List<BackendServer>) 
      *   among the backup servers with weight 0.
      *
      * @param stickyId Value of the sticky cookie, if any.
+     * @param exclude Servers that already failed for this request, never picked again.
      * @return the server, `null` if none is up.
      */
-    fun pick(stickyId: String?, random: Random = Random.Default): BackendServer? {
-        if (servers.size == 1) return servers.first()
-        val online = servers.filter { it.healthy }
+    fun pick(stickyId: String?, exclude: Set<BackendServer> = emptySet(), random: Random = Random.Default): BackendServer? {
+        if (servers.size == 1) return servers.first().takeIf { it !in exclude }
+        val online = servers.filter { it.healthy && it !in exclude }
         if (online.isEmpty()) return null
         if (config.stickySession && stickyId != null) online.firstOrNull { it.stickyId == stickyId }?.let { return it }
 

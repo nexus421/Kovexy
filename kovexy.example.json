@@ -263,6 +263,7 @@
   "limits": {
     "backendConnectTimeout": "3s",
     "backendKeepAlive": "2m",
+    "backendResponseTimeout": "10m",
     "clientIdleTimeout": "5m",
     "maxRequestHeaderBytes": 16384,
     "maxConnections": 10000,

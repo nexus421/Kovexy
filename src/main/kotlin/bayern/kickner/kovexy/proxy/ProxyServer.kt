@@ -9,6 +9,7 @@ import bayern.kickner.kovexy.config.LISTENER_HTTP
 import bayern.kickner.kovexy.config.LISTENER_HTTPS
 import bayern.kickner.kovexy.config.LimitsConfig
 import bayern.kickner.kovexy.randomToken
+import bayern.kickner.kovexy.site.neutralPage
 import bayern.kickner.kovexy.tls.CertificateBundle
 import bayern.kickner.kovexy.tls.DynamicKeyManager
 import bayern.kickner.kovexy.tls.FALLBACK_ALIAS
@@ -20,13 +21,21 @@ import io.ktor.server.engine.sslConnector
 import io.ktor.server.jetty.jakarta.Jetty
 import io.ktor.server.jetty.jakarta.JettyApplicationEngine
 import io.ktor.server.jetty.jakarta.JettyApplicationEngineBase
+import org.eclipse.jetty.http.HttpFields
+import org.eclipse.jetty.http.HttpHeader
+import org.eclipse.jetty.http.HttpStatus
 import org.eclipse.jetty.http2.server.AbstractHTTP2ServerConnectionFactory
 import org.eclipse.jetty.server.HttpConfiguration
 import org.eclipse.jetty.server.HttpConnectionFactory
+import org.eclipse.jetty.server.Request
+import org.eclipse.jetty.server.Response
 import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.server.ServerConnector
 import org.eclipse.jetty.server.SslConnectionFactory
+import org.eclipse.jetty.server.handler.ErrorHandler
+import org.eclipse.jetty.util.Callback
 import org.eclipse.jetty.util.ssl.SslContextFactory
+import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.net.ssl.SSLContext
 
@@ -91,6 +100,8 @@ class ProxyServer(
             secureRequestCustomizer = { isSniHostCheck = false }
             configureServer = {
                 jetty = this
+                // Set before the start, like every other bean
+                errorHandler = NeutralErrorHandler()
                 connectors.filterIsInstance<ServerConnector>().forEach { connector ->
                     // Every interface, IPv4 and IPv6, instead of Ktor's 0.0.0.0
                     connector.host = null
@@ -309,5 +320,28 @@ class ConnectionGate(private val connectors: List<org.eclipse.jetty.server.Abstr
             paused = false
             connectors.forEach { it.isAccepting = true }
         }
+    }
+}
+
+/**
+ * Answers the errors Jetty handles itself, before Ktor sees the request (a broken request target like `/%`, a bad
+ * header), with Kovexy's neutral page. Jetty's own page names the server and repeats the request.
+ */
+internal class NeutralErrorHandler : ErrorHandler() {
+    override fun generateResponse(request: Request, response: Response, code: Int, message: String?, cause: Throwable?, callback: Callback) {
+        response.headers.put(HttpHeader.CONTENT_TYPE, NEUTRAL_CONTENT_TYPE)
+        response.write(true, ByteBuffer.wrap(page(code)), callback)
+    }
+
+    override fun badMessageError(status: Int, reason: String?, fields: HttpFields.Mutable): ByteBuffer {
+        fields.put(HttpHeader.CONTENT_TYPE, NEUTRAL_CONTENT_TYPE)
+        return ByteBuffer.wrap(page(status))
+    }
+
+    private fun page(code: Int): ByteArray =
+        neutralPage(code, HttpStatus.getMessage(code), "This request cannot be answered.").toByteArray(Charsets.UTF_8)
+
+    private companion object {
+        const val NEUTRAL_CONTENT_TYPE = "text/html;charset=utf-8"
     }
 }

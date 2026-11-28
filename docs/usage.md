@@ -62,7 +62,13 @@ In this order:
   connect every 30 seconds.
 - With `healthCheck.path` Kovexy sends a `GET` every `interval` (Caddy). A status other than `expectStatus` marks the
   server down, one good answer marks it up.
-- There are no automatic retries of failed requests (Caddy). An unreachable backend gets a neutral 502 page.
+- A request without body whose server cannot be connected goes to another server of the backend that is up (nothing reached
+  the backend yet, so repeating it is safe). Requests with a body and failures after the connection are never
+  repeated. When no server is left, the visitor gets a neutral 502 page.
+- A backend that sends no response headers within `limits.backendResponseTimeout` (10 minutes by default) gets the visitor a
+  neutral 504 page. The time starts once the request body is sent, a running download or stream has no limit.
+- A visitor who goes away while a body is relayed is logged with status 499 and the reason `client gone`, not as a failing
+  backend.
 - Up and down changes go to the webhook events `backendDown` and `backendUp`.
 - WebSockets are detected and relayed without any setting. If the backend refuses the handshake, the visitor gets
   its status (for example 403). An active WebSocket has no time limit, one without any traffic for 60 minutes is

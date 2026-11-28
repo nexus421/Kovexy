@@ -161,6 +161,8 @@ fun testBytes(size: Int): ByteArray = ByteArray(size) { (it * 31 + 7).toByte() }
  * - `/big/{size}` streams [testBytes] of that size,
  * - `POST /upload` answers with the SHA-256 of the body,
  * - `/status/{code}` answers with that status,
+ * - `/slow/{ms}` waits that long before it answers,
+ * - `/drip/{ms}` sends its headers and a first part at once and the rest after that long,
  * - `/ws` echoes WebSocket text frames, `/ws-quiet` stays silent until the client writes.
  *
  * @property port Its port.
@@ -193,6 +195,18 @@ class TestBackend(val port: Int = freePort(), val name: String = "backend") : Au
                     digest.update(buffer, 0, n)
                 }
                 call.respondText(HexFormat.of().formatHex(digest.digest()))
+            }
+            get("/slow/{ms}") {
+                delay(call.parameters["ms"]!!.toLong())
+                call.respondText("late")
+            }
+            get("/drip/{ms}") {
+                call.respondBytesWriter(ContentType.Text.Plain) {
+                    writeFully("first ".toByteArray())
+                    flush()
+                    delay(call.parameters["ms"]!!.toLong())
+                    writeFully("second".toByteArray())
+                }
             }
             get("/ws-denied") { call.respond(HttpStatusCode.Forbidden) }
             get("/status/{code}") { call.respond(HttpStatusCode.fromValue(call.parameters["code"]!!.toInt())) }

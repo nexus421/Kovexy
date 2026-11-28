@@ -83,7 +83,8 @@
   `:authority` would otherwise reach the fallback with the `Host` of a protected one).
 - `X-Forwarded-User`, `-Email`, `-Preferred-Username` and the other headers Kovexy removes are also removed in
   spellings with `_`, `.` or any other character instead of `-`, which CGI style servers read as the same header.
-- The neutral error pages never show internals.
+- The neutral error pages never show internals. Requests Jetty refuses itself, before Kovexy sees them (a broken
+  request target like `/%`, a bad header), get the same neutral page instead of Jetty's, which names the server.
 - Forms are read with a size limit (1 MiB in the admin UI, 16 KiB on proxied domains), a bigger body counts as an
   empty form and is never read into memory as a whole.
 - Paths under `/.kovexy/` are recognized on the cleaned path, `/%2Ekovexy/` is Kovexy's too and never reaches an

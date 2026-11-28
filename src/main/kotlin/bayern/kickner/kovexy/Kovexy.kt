@@ -198,6 +198,7 @@ class Kovexy internal constructor(
         },
         geo = geo,
         adminPort = { server.adminPort },
+        responseTimeout = { config.limits.backendResponseTimeout },
         clock = clock,
     )
 

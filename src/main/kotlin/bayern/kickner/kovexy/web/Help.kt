@@ -82,6 +82,11 @@ private val HELP: Map<String, HelpText> = mapOf(
         "A longer time saves connection setups, a shorter one frees resources.",
         "2m, and below the keep-alive time of your backend.",
     ),
+    "backendResponseTimeout" to HelpText(
+        "How long a backend server may take to start its answer after it received the request. Then the visitor gets 504. Downloads, server-sent events and WebSockets that already run are never cut.",
+        "A backend that hangs holds the visitor and a connection until this time is over. Too short a time cuts slow but working requests, for example long polling or large exports.",
+        "10m. Raise it for a service that computes longer. 0s turns it off.",
+    ),
     "clientIdleTimeout" to HelpText(
         "How long Kovexy waits for a visitor who neither sends nor reads anything before it closes the connection. It also covers a client that stops sending its request headers.",
         "A shorter time frees connections from slow or stuck clients sooner, but cuts off visitors on a bad line.",

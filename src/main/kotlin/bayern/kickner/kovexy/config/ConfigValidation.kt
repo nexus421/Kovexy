@@ -232,6 +232,7 @@ private fun MutableList<String>.validateWebhook(owner: String, hook: WebhookConf
 private fun MutableList<String>.validateLimits(limits: LimitsConfig) {
     if (limits.backendConnectTimeout <= Duration.ZERO) add("limits.backendConnectTimeout must be positive")
     if (limits.backendKeepAlive <= Duration.ZERO) add("limits.backendKeepAlive must be positive")
+    if (limits.backendResponseTimeout < Duration.ZERO) add("limits.backendResponseTimeout must not be negative")
     if (limits.clientIdleTimeout < 1.seconds) add("limits.clientIdleTimeout must be at least 1s")
     if (limits.maxRequestHeaderBytes !in 1024..1024 * 1024) add("limits.maxRequestHeaderBytes must be between 1024 and 1048576")
     if (limits.maxConnections < 0) add("limits.maxConnections must not be negative, 0 is unlimited")

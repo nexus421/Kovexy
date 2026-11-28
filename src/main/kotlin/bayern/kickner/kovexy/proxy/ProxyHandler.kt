@@ -65,14 +65,19 @@ import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.writeFully
 import io.ktor.utils.io.writer
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 import java.net.ConnectException
 import java.net.InetAddress
 import java.net.NoRouteToHostException
 import java.net.UnknownHostException
 import java.nio.channels.UnresolvedAddressException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "Proxy"
@@ -131,6 +136,7 @@ private class Trace(val start: Long, val clientIp: String, val method: String, v
  * @param reserved Answers `/.kovexy/` and shows captcha pages.
  * @param dyndns Answers `/nic/update` on domains with `dyndns`.
  * @param geo Country of the visitor for the statistics.
+ * @param responseTimeout Time a backend may take for its response headers, zero is off (`limits.backendResponseTimeout`).
  * @param clock Unix milliseconds.
  */
 class ProxyHandler(
@@ -149,6 +155,7 @@ class ProxyHandler(
     private val dyndns: DyndnsEndpoint,
     private val geo: Geo,
     private val adminPort: () -> Int = { -1 },
+    private val responseTimeout: () -> kotlin.time.Duration = { kotlin.time.Duration.ZERO },
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     /**
@@ -510,6 +517,8 @@ class ProxyHandler(
      *
      * @param dropAuthorization Removes the `Authorization` header, after Kovexy's own Basic Auth let the request in, so
      *   the password does not reach the backend.
+     * @param exclude Servers that could not be connected for this request. A request without body that finds its
+     *   server unreachable goes to another server that is up (like Caddy, nothing was sent yet).
      */
     private suspend fun forward(
         call: ApplicationCall,
@@ -522,9 +531,10 @@ class ProxyHandler(
         peer: String,
         trace: Trace,
         dropAuthorization: Boolean = false,
+        exclude: Set<BackendServer> = emptySet(),
     ) {
         val stickyIn = if (group.config.stickySession) call.request.cookies[group.stickyCookie] else null
-        val server = group.pick(stickyIn)
+        val server = group.pick(stickyIn, exclude)
         if (server == null) {
             trace.reason = "no backend up"
             respondText(call, trace, badGatewayPage(), ContentType.Text.Html, HttpStatusCode.BadGateway)
@@ -539,7 +549,7 @@ class ProxyHandler(
         val semaphore = server.semaphore()
         semaphore?.acquire()
         server.active.incrementAndGet()
-        try {
+        val failOver = try {
             val isWebSocket = call.request.httpMethod == HttpMethod.Get &&
                 call.request.headers[HttpHeaders.Upgrade].equals("websocket", ignoreCase = true)
             val headers = backendHeaders(call, table, server, route, peer, trace.clientIp)
@@ -577,10 +587,15 @@ class ProxyHandler(
                 }
                 return
             }
-            forwardHttp(call, client, server, "${if (server.config.tls) "https" else "http"}://${server.address}$path$query", headers, route, stickyOut, trace, tag)
+            val canFailOver = group.servers.any { it != server && it !in exclude && it.healthy }
+            forwardHttp(call, client, server, "${if (server.config.tls) "https" else "http"}://${server.address}$path$query", headers, route, stickyOut, trace, tag, canFailOver)
         } finally {
             server.active.decrementAndGet()
             semaphore?.release()
+        }
+        if (failOver) {
+            staticLog(KLogger.Level.DEBUG, TAG) { "Backend ${server.address} unreachable, trying another server of ${group.config.name}" }
+            forward(call, table, group, route, rawUri, rawPath, normalizedPath, peer, trace, dropAuthorization, exclude + server)
         }
     }
 
@@ -619,7 +634,8 @@ class ProxyHandler(
         stickyOut: String?,
         trace: Trace,
         tag: WebSocketTag,
-    ) {
+        canFailOver: Boolean,
+    ): Boolean {
         val method = call.request.httpMethod
         val length = headers["Content-Length"]?.toLongOrNull()
         // HTTP/2 has no Transfer-Encoding, a streamed body there comes without Content-Length
@@ -627,13 +643,17 @@ class ProxyHandler(
         val hasBody = (length != null && length > 0) || call.request.headers[HttpHeaders.TransferEncoding] != null || streamedHttp2
         val contentType = headers["Content-Type"]
         val bodyHeaders = contentType?.let { headersOf(HttpHeaders.ContentType, it) } ?: Headers.Empty
+        // The response timeout starts once the body is sent, a slow upload is no slow backend
+        var bodySent: Job? = null
         val body: OutgoingContent = if (hasBody.not()) {
             object : OutgoingContent.NoContent() {
                 override val contentLength: Long? = length
                 override val headers: Headers = bodyHeaders
             }
         } else {
-            val requestBody = counting(call, call.receiveChannel(), trace.bytesIn)
+            val writer = call.writer(Dispatchers.Unconfined) { copy(call.receiveChannel(), channel, trace.bytesIn, visitorIsTarget = false) }
+            bodySent = writer.job
+            val requestBody = writer.channel
             object : OutgoingContent.ReadChannelContent() {
                 override val contentLength: Long? = length
                 override val headers: Headers = bodyHeaders
@@ -649,46 +669,98 @@ class ProxyHandler(
             }
             setBody(body)
         }
+        val timeout = responseTimeout()
+        val headersArrived = AtomicBoolean(false)
+        val timedOut = AtomicBoolean(false)
         val responded = runCatching {
-            statement.execute { response ->
-                val status = response.status.value
-                val out = HeaderList(response.headers.entries().flatMap { (name, values) -> values.map { name to it } })
-                out.removeHopByHop()
-                out.apply(route.responseHeaders)
-                stickyOut?.let { out.add(HttpHeaders.SetCookie, it) }
-                val responseLength = out["Content-Length"]?.toLongOrNull()
-                out.remove("Content-Length")
-                val outHeaders = Headers.build { out.entries.forEach { (name, value) -> append(name, value) } }
-                trace.status = status
-                val noBody = method == HttpMethod.Head || status in NO_BODY_STATUSES || status in 100..199
-                val content: OutgoingContent = if (noBody) {
-                    object : OutgoingContent.NoContent() {
-                        override val status: HttpStatusCode = response.status
-                        override val headers: Headers = outHeaders
-                        override val contentLength: Long? = if (method == HttpMethod.Head) responseLength else null
-                    }
-                } else {
-                    val source = response.bodyAsChannel()
-                    object : OutgoingContent.WriteChannelContent() {
-                        override val status: HttpStatusCode = response.status
-                        override val headers: Headers = outHeaders
-                        override val contentLength: Long? = responseLength
-                        // Registered, so a ban or a removed Incus domain also ends a long download or stream
-                        override suspend fun writeTo(channel: ByteWriteChannel) = webSockets.stream(tag) { copy(source, channel, trace.bytesOut) }
+            coroutineScope {
+                val exchange = async {
+                    statement.execute { response ->
+                        headersArrived.set(true)
+                        relayResponse(call, response, method, route, stickyOut, trace, tag)
                     }
                 }
-                call.respond(content)
+                val watchdog = if (timeout.isPositive()) launch {
+                    bodySent?.join()
+                    delay(timeout)
+                    if (headersArrived.get().not()) {
+                        timedOut.set(true)
+                        exchange.cancel()
+                    }
+                } else null
+                try {
+                    exchange.await()
+                } finally {
+                    watchdog?.cancel()
+                }
             }
         }
-        val error = responded.exceptionOrNull() ?: return
+        val error = responded.exceptionOrNull() ?: return false
+        if (timedOut.get()) {
+            trace.reason = "backend timeout"
+            staticLog(KLogger.Level.DEBUG, TAG) { "Backend ${server.address} sent no answer within $timeout" }
+            runCatching { respondText(call, trace, neutralPage(504, "Gateway Timeout", "The service did not answer in time."), ContentType.Text.Html, HttpStatusCode.GatewayTimeout) }
+            return false
+        }
+        if (error.isVisitorGone()) {
+            // The visitor went away, the backend did nothing wrong (nginx logs 499)
+            trace.status = STATUS_CLIENT_GONE
+            trace.reason = "client gone"
+            return false
+        }
         if (error is CancellationException) throw error
         if (trace.status != 0) {
             // The response had started, the visitor sees a cut off body
             trace.reason = "backend aborted"
             staticLog(KLogger.Level.DEBUG, TAG) { "Backend ${server.address} aborted: ${error.reason()}" }
-            return
+            return false
+        }
+        // Nothing was sent to the backend and nothing to the visitor, another server can take the request
+        if (canFailOver && hasBody.not() && error.isConnectError()) {
+            server.markHealth(false, "connection failed: ${error.reason()}", clock(), events)
+            return true
         }
         backendFailed(call, server, error, trace)
+        return false
+    }
+
+    /** Relays the backend's [response] to the visitor with the route's header rules. */
+    private suspend fun relayResponse(
+        call: ApplicationCall,
+        response: io.ktor.client.statement.HttpResponse,
+        method: HttpMethod,
+        route: RouteConfig,
+        stickyOut: String?,
+        trace: Trace,
+        tag: WebSocketTag,
+    ) {
+        val status = response.status.value
+        val out = HeaderList(response.headers.entries().flatMap { (name, values) -> values.map { name to it } })
+        out.removeHopByHop()
+        out.apply(route.responseHeaders)
+        stickyOut?.let { out.add(HttpHeaders.SetCookie, it) }
+        val responseLength = out["Content-Length"]?.toLongOrNull()
+        out.remove("Content-Length")
+        val outHeaders = Headers.build { out.entries.forEach { (name, value) -> append(name, value) } }
+        trace.status = status
+        val noBody = method == HttpMethod.Head || status in NO_BODY_STATUSES || status in 100..199
+        val content: OutgoingContent = if (noBody) {
+            object : OutgoingContent.NoContent() {
+                override val status: HttpStatusCode = response.status
+                override val headers: Headers = outHeaders
+                override val contentLength: Long? = if (method == HttpMethod.Head) responseLength else null
+            }
+        } else {
+            val source = response.bodyAsChannel()
+            object : OutgoingContent.WriteChannelContent() {
+                override val status: HttpStatusCode = response.status
+                override val headers: Headers = outHeaders
+                override val contentLength: Long? = responseLength
+                // Registered, so a ban or a removed Incus domain also ends a long download or stream
+                override suspend fun writeTo(channel: ByteWriteChannel) = webSockets.stream(tag) { copy(source, channel, trace.bytesOut, visitorIsTarget = true) }
+            }
+        }
+        call.respond(content)
     }
 
     /** Last warning about a refused certificate per server address. */
@@ -762,22 +834,38 @@ private fun Throwable.isConnectError(): Boolean = generateSequence(this) { it.ca
         it is UnknownHostException || it is NoRouteToHostException || it is java.net.SocketTimeoutException && it.message?.contains("connect", true) == true
 }
 
-/** Copies [source] into [target] and counts the bytes. */
-private suspend fun copy(source: ByteReadChannel, target: ByteWriteChannel, counter: AtomicLong) {
+/** The visitor's side of a relay failed: the visitor went away while a body was read from or written to it. */
+private class VisitorGoneException(cause: Throwable) : java.io.IOException(cause)
+
+/** Whether [this] was caused by the visitor going away, see [copy]. */
+private fun Throwable.isVisitorGone(): Boolean = generateSequence(this) { it.cause }.any { it is VisitorGoneException }
+
+/**
+ * Copies [source] into [target] and counts the bytes. A failure on the visitor's side ([target] if [visitorIsTarget],
+ * otherwise [source]) is thrown as [VisitorGoneException], so it is not taken for a failing backend.
+ */
+private suspend fun copy(source: ByteReadChannel, target: ByteWriteChannel, counter: AtomicLong, visitorIsTarget: Boolean) {
     val buffer = ByteArray(COPY_BUFFER)
     while (true) {
-        val read = source.readAvailable(buffer)
+        val read = visitorSide(visitorIsTarget.not()) { source.readAvailable(buffer) }
         if (read < 0) break
         if (read == 0) continue
-        target.writeFully(buffer, 0, read)
-        target.flush()
+        visitorSide(visitorIsTarget) {
+            target.writeFully(buffer, 0, read)
+            target.flush()
+        }
         counter.addAndGet(read.toLong())
     }
 }
 
-/** A channel that relays [source] and counts its bytes, running in [scope]. */
-private fun counting(scope: CoroutineScope, source: ByteReadChannel, counter: AtomicLong): ByteReadChannel =
-    scope.writer(Dispatchers.Unconfined) { copy(source, channel, counter) }.channel
+/** Runs [block] and marks its failure as the visitor's if [isVisitor]. Cancellation passes unchanged. */
+private inline fun <T> visitorSide(isVisitor: Boolean, block: () -> T): T = try {
+    block()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Throwable) {
+    throw if (isVisitor && e !is VisitorGoneException) VisitorGoneException(e) else e
+}
 
 /** The `Referer` without query and fragment, at most 512 characters, empty if none. Queries never reach the statistics. */
 internal fun refererWithoutQuery(value: String?): String =

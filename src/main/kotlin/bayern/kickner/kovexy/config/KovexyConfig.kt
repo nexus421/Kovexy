@@ -543,6 +543,10 @@ data class WebhookConfig(
  * @property maxConnectionsPerAddress Open connections on the proxy ports of one address (IPv6 per /64), `0` is
  *   unlimited. Keeps a single host from taking all [maxConnections] (decided on 19.11.2026). Loopback and
  *   `trustedProxies` are not limited, every visitor comes from them.
+ * @property backendResponseTimeout Time a backend server may take for the response headers, counted after the request
+ *   body was sent (like Caddy's `response_header_timeout`). A body that is already streaming, server-sent events and
+ *   WebSockets have no limit. `0s` is off. The default of 10 minutes leaves room for slow services, a hanging backend
+ *   no longer holds a visitor forever (decided on 28.11.2026).
  */
 @Serializable
 data class LimitsConfig(
@@ -553,6 +557,7 @@ data class LimitsConfig(
     val maxConnections: Int = 10_000,
     val maxAcceptsPerSecond: Int = 0,
     val maxConnectionsPerAddress: Int = 256,
+    val backendResponseTimeout: TextDuration = 10.minutes,
 )
 
 /**

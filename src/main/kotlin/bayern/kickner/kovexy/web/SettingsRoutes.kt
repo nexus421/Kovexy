@@ -76,6 +76,7 @@ fun Route.settingsRoutes(kovexy: Kovexy) {
         val wsDelay = parseDuration("WebSocket close delay", params["webSocketCloseDelay"], problems)
         val connect = parseDuration("Backend connect timeout", params["backendConnectTimeout"], problems)
         val keepAlive = parseDuration("Backend keep-alive", params["backendKeepAlive"], problems)
+        val responseTimeout = parseDuration("Backend response timeout", params["backendResponseTimeout"], problems)
         val clientIdle = parseDuration("Client idle timeout", params["clientIdleTimeout"], problems)
         val headerBytes = params["maxRequestHeaderBytes"]?.trim()?.toIntOrNull() ?: run { problems += "Request header size must be a number"; 0 }
         val maxConnections = params["maxConnections"]?.trim()?.toIntOrNull() ?: run { problems += "Maximum connections must be a number"; 0 }
@@ -97,7 +98,7 @@ fun Route.settingsRoutes(kovexy: Kovexy) {
                 updateCheck = params["updateCheck"] != null,
                 webSocketCloseDelay = wsDelay!!,
                 language = params["language"].orEmpty().ifEmpty { c.language },
-                limits = LimitsConfig(connect!!, keepAlive!!, clientIdle!!, headerBytes, maxConnections, maxAccepts, maxPerAddress),
+                limits = LimitsConfig(connect!!, keepAlive!!, clientIdle!!, headerBytes, maxConnections, maxAccepts, maxPerAddress, responseTimeout!!),
             )
         }
         val saved = if (next == null) problems else call.saveConfig(params["version"], next)
@@ -309,6 +310,7 @@ private suspend fun ApplicationCall.settingsPage(kovexy: Kovexy, problems: List<
                     div("grid-2") {
                         textField("Backend connect timeout", "backendConnectTimeout", v("backendConnectTimeout", config.limits.backendConnectTimeout.toString()))
                         textField("Backend keep-alive", "backendKeepAlive", v("backendKeepAlive", config.limits.backendKeepAlive.toString()))
+                        textField("Backend response timeout", "backendResponseTimeout", v("backendResponseTimeout", config.limits.backendResponseTimeout.toString()))
                         textField("Client idle timeout", "clientIdleTimeout", v("clientIdleTimeout", config.limits.clientIdleTimeout.toString()))
                         textField("Request header size (bytes)", "maxRequestHeaderBytes", v("maxRequestHeaderBytes", config.limits.maxRequestHeaderBytes.toString()), type = InputType.number)
                         textField("Maximum connections", "maxConnections", v("maxConnections", config.limits.maxConnections.toString()), type = InputType.number,

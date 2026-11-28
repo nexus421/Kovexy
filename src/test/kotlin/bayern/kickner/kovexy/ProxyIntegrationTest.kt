@@ -67,6 +67,24 @@ class ProxyIntegrationTest {
     private fun echo(response: RawResponse): Map<String, List<String>> =
         response.text.lines().filter { '=' in it }.groupBy({ it.substringBefore('=') }, { it.substringAfter('=') })
 
+    /** Jetty refuses broken request targets itself, the visitor must get Kovexy's neutral page and not Jetty's. */
+    @Test
+    fun brokenRequestTargetsGetTheNeutralPage(): Unit = run {
+        listOf("/%", "/%zz", "/a%00b").forEach { path ->
+            val answers = listOf(
+                "http" to http("a.test", path),
+                "https" to https("a.test", path),
+                "admin" to rawRequest(harness.adminPort, "127.0.0.1", path),
+            )
+            answers.forEach { (port, response) ->
+                assertEquals(400, response.status, "$port $path")
+                assertTrue(response.text.startsWith("<!DOCTYPE html>") && "Error 400" in response.text, "Neutral page on $port for $path: ${response.text}")
+                assertTrue("HTTP ERROR" !in response.text && "badMessage" !in response.text && "badRequest" !in response.text, "Jetty page on $port for $path")
+                assertTrue(response.header("Content-Type")?.startsWith("text/html") == true, "$port $path")
+            }
+        }
+    }
+
     @Test
     fun forwardsWithCaddyHeaders(): Unit = run {
         val response = https("a.test", "/x/y?q=1", headers = listOf(
