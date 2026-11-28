@@ -134,7 +134,20 @@ class TargetsTest {
             val redirect = h.https("unknown.test", "/p?q=1")
             assertEquals(307, redirect.status)
             assertEquals("https://other.test/p?q=1", redirect.header("Location"))
-            assertEquals(500, h.https("other.test", "/").status, "A redirect to itself is refused")
+            // A client that sends the redirect target's name back to this server is misdirected, no server error
+            val loop = h.https("other.test", "/loop")
+            assertEquals(421, loop.status, "A redirect to itself is refused")
+            assertTrue(loop.text.startsWith("<!DOCTYPE html>"), "Neutral page")
+            val entry = run {
+                repeat(50) {
+                    h.kovexy.accessLog.flush()
+                    h.kovexy.accessLog.latest().firstOrNull { it.host == "other.test" && it.path == "/loop" }?.let { return@run it }
+                    delay(100)
+                }
+                error("No access log entry for the redirect loop")
+            }
+            assertEquals("redirect loop", entry.reason)
+            assertEquals("MISDIRECTED", entry.block, "Counted as blocked, not as an error")
 
             h.writeConfigByHand("""{ "admin": { "port": ADMIN_PORT }, "fallback": { "type": "noResponse" } }""")
             val empty = h.https("unknown.test", "/")

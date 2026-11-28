@@ -151,8 +151,9 @@ in `kovexy.json`.
 
 `{ "type": "static" | "backend" | "redirect" | "notFound" | "noResponse", ... }` with the same fields as the
 targets. `static` with an empty `root` serves `<dataDir>/www`, where Kovexy puts a neutral page on the first start.
-A redirect to the requested domain itself is answered with 500, it would loop. `noResponse` answers with an empty
-`204` and closes the connection.
+A redirect to the requested domain itself is answered with 421 (misdirected request), it would loop. Such requests
+come from clients that send the redirect target back to this server, mostly bots, they count as blocked and not as
+errors. `noResponse` answers with an empty `204` and closes the connection.
 
 ### `webhooks[]`
 

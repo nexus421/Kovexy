@@ -488,9 +488,11 @@ class ProxyHandler(
             is Fallback.Redirect -> {
                 val targetHost = runCatching { java.net.URI(fallback.url).host?.lowercase() }.getOrNull()
                 if (targetHost == trace.host) {
-                    // Zoraxy refuses a redirect to the requested domain itself, it would loop forever
+                    // Zoraxy refuses a redirect to the requested domain itself, it would loop forever. Mostly bots that
+                    // followed the redirect and came back to this address, so 421 (misdirected) and no server error
                     trace.reason = "redirect loop"
-                    respondText(call, trace, neutralPage(500, "Redirect loop", "The fallback redirects to this address itself."), ContentType.Text.Html, HttpStatusCode.InternalServerError)
+                    trace.block = BlockKind.MISDIRECTED
+                    respondText(call, trace, neutralPage(421, "Misdirected Request", "This address is not served here."), ContentType.Text.Html, HttpStatusCode(421, "Misdirected Request"))
                     return
                 }
                 val rest = if (fallback.keepPath && path != "/") encodePath(path) else ""

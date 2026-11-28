@@ -22,4 +22,5 @@ enum class BlockKind(val label: String) {
     BASIC_AUTH("Basic Auth failed"),
     ORIGIN("WebSocket from another origin"),
     MALFORMED("Malformed request"),
+    MISDIRECTED("Misdirected request"),
 }

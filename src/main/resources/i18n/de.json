@@ -422,6 +422,7 @@
  "Method not allowed": "Methode nicht erlaubt",
  "Methods": "Methoden",
  "Minimum score (v3)": "Mindestscore (v3)",
+ "Misdirected request": "Fehlgeleitete Anfrage",
  "Name": "Name",
  "Names from the list below, one per line": "Namen aus der Liste unten, einer pro Zeile",
  "Names of the shipped list that should no longer count as AI crawler, one per line.": "Namen der mitgelieferten Liste, die nicht mehr als KI-Crawler zählen sollen, einer pro Zeile.",
