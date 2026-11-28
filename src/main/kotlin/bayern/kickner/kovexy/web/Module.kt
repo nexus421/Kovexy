@@ -4,6 +4,7 @@ import bayern.kickner.kovexy.i18n.t
 import bayern.kickner.klogger.KLogger
 import bayern.kickner.klogger.staticLog
 import bayern.kickner.kovexy.Kovexy
+import bayern.kickner.kovexy.isVisitorDisconnect
 import bayern.kickner.kovexy.proxy.MAX_VISITOR_WEBSOCKET_FRAME_BYTES
 import io.ktor.websocket.ChannelOverflow
 import bayern.kickner.kovexy.proxy.WEBSOCKET_QUEUE_FRAMES
@@ -75,6 +76,11 @@ fun Application.kovexyModule(kovexy: Kovexy) {
         } catch (e: ContentTransformationException) {
             call.errorPage(HttpStatusCode.BadRequest, "Bad request", "The request was malformed.")
         } catch (e: Throwable) {
+            // A closed browser tab ends the live stream of the status page this way, nobody is left to answer
+            if (e.isVisitorDisconnect()) {
+                staticLog(KLogger.Level.DEBUG, TAG) { "Request ${call.request.path()} ended, the visitor left" }
+                return@intercept
+            }
             staticLog(KLogger.Level.ERROR, TAG) { "Request ${call.request.path()} failed: ${e.stackTraceToString()}" }
             runCatching { call.errorPage(HttpStatusCode.InternalServerError, "Something went wrong", "The error was logged. Try again, or check the log on the server.") }
         }

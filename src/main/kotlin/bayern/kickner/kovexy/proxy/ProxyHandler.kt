@@ -16,6 +16,7 @@ import bayern.kickner.kovexy.access.allowsIp
 import bayern.kickner.kovexy.access.isDrop
 import bayern.kickner.kovexy.access.isForeignInitiated
 import bayern.kickner.kovexy.cleanText
+import bayern.kickner.kovexy.isVisitorDisconnect
 import bayern.kickner.kovexy.config.MatchType
 import bayern.kickner.kovexy.dyndns.DYNDNS_UPDATE_PATH
 import bayern.kickner.kovexy.dyndns.DyndnsEndpoint
@@ -179,6 +180,13 @@ class ProxyHandler(
             if (trace.status == 0) trace.status = STATUS_CLIENT_GONE
             trace.reason = trace.reason.ifEmpty { "client gone" }
         } catch (e: Throwable) {
+            if (e.isVisitorDisconnect()) {
+                // The visitor closed the connection while Kovexy still wrote, no error (nginx logs 499)
+                trace.status = STATUS_CLIENT_GONE
+                trace.reason = "client gone"
+                staticLog(KLogger.Level.DEBUG, TAG) { "Visitor left during $domain$rawPath: ${e.reason()}" }
+                return
+            }
             staticLog(KLogger.Level.ERROR, TAG) { "Request to $domain$rawPath failed: ${e.stackTraceToString()}" }
             // Only when nothing was sent yet, a status set before the failure does not mean an answer went out
             if (call.response.isCommitted.not()) {

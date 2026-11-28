@@ -125,3 +125,10 @@ fun escapeLogMessage(message: String): String = buildString(message.length + 16)
         index++
     }
 }
+
+/**
+ * Whether [this] means the visitor closed the connection while Kovexy still wrote to it, for example "Broken pipe" or
+ * an HTTP/2 reset. Jetty reports both as `EofException`, which only its server side throws, so a failing backend never
+ * counts as such. A visitor who leaves is no error of Kovexy and is never logged with a stack trace.
+ */
+fun Throwable.isVisitorDisconnect(): Boolean = generateSequence(this) { it.cause }.any { it is org.eclipse.jetty.io.EofException }

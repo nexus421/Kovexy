@@ -67,8 +67,8 @@ In this order:
   repeated. When no server is left, the visitor gets a neutral 502 page.
 - A backend that sends no response headers within `limits.backendResponseTimeout` (10 minutes by default) gets the visitor a
   neutral 504 page. The time starts once the request body is sent, a running download or stream has no limit.
-- A visitor who goes away while a body is relayed is logged with status 499 and the reason `client gone`, not as a failing
-  backend.
+- A visitor who goes away while a body is relayed or while Kovexy sends its own files and pages is logged with status 499
+  and the reason `client gone`, not as a failing backend. The journal shows no error for it, only a debug line.
 - Up and down changes go to the webhook events `backendDown` and `backendUp`.
 - WebSockets are detected and relayed without any setting. If the backend refuses the handshake, the visitor gets
   its status (for example 403). An active WebSocket has no time limit, one without any traffic for 60 minutes is
