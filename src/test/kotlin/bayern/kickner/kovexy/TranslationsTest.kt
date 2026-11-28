@@ -113,6 +113,14 @@ class TranslationsTest {
         assertEquals(emptySet<String>(), missing.toSet(), "Texts in t(...) without a German translation")
     }
 
+    /** Block reasons are translated at runtime (`blockLabel`), the scan for `t("...")` above does not see them. */
+    @Test
+    fun everyBlockReasonHasATranslation(): Unit {
+        val dictionary = I18n.dictionary("de")
+        val missing = bayern.kickner.kovexy.access.BlockKind.entries.map { it.label }.filter { it !in dictionary }
+        assertEquals(emptyList(), missing, "Block reasons without a German translation")
+    }
+
     @Test
     fun translationsKeepPlaceholdersAndWritingRules(): Unit {
         val placeholder = Regex("""\{\d+\}""")
